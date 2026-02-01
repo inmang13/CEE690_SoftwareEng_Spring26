@@ -67,7 +67,7 @@ def read_all_flow_meters(directory_path, verbose=True):
         try:
             df = read_flow_meter_data(file_path)
             if len(df)>0:
-                all_data.append()
+                all_data.append(df)
                 if verbose:
                     print(
                     f"✓ Loaded {os.path.basename(file_path)} "

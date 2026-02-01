@@ -29,6 +29,20 @@ def main():
     flow_data = read_all_flow_meters(raw_data_dir, verbose=True)
     print(f"\n✓ Loaded {len(flow_data)} total records")
     print(f"✓ Meters found: {flow_data['Meter'].unique().tolist()}")
+    
+    # Step 2: Basic Filtering
+    initial_count = len(flow_data)
+    flow_data = flow_data[flow_data['Flow_MGD'].notna()]
+    filtered_count = len(flow_data)
+    
+    print(f"✓ Removed {initial_count - filtered_count} rows with "
+          f"missing Flow_MGD")
+    print(f"✓ {filtered_count} records remaining")
+    
+    # Step 3: Saving File
+    flow_data.to_csv(output_file, index=False)
+    print(f"✓ Saved to: {output_file}")
+
 
 if __name__ == "__main__":
     main()

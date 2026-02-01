@@ -20,8 +20,9 @@ def read_flow_meter_data(file_path):
         raise ValueError(f"Failed to read CSV: {e}")
 
     # Add metadata columns
+    filename=os.path.basename(file_path)
     df['Meter'] = extract_meter_name(os.path.basename(file_path))
-    df['Source_File'] = os.path.basename(file_path)
+    df['Source_File'] = filename
 
     # Rename columns to standard names
     df = df.rename(columns={
@@ -79,7 +80,7 @@ def read_all_flow_meters(directory_path, verbose=True):
                         f"⚠ Skipped {os.path.basename(file_path)} "
                         f"(no valid data)"
                     )
-        except Exceptions as e:
+        except Exception  as e:
             failed_files.append((file_path, str(e)))
             if verbose:
                 print(f"✗ Failed {os.path.basename(file_path)}: {e}")

@@ -20,8 +20,8 @@ def read_flow_meter_data(file_path):
         raise ValueError(f"Failed to read CSV: {e}")
 
     # Add metadata columns
-    df['Meter'] = meter_name
-    df['Source_File'] = filename
+    df['Meter'] = extract_meter_name(os.path.basename(file_path))
+    df['Source_File'] = os.path.basename(file_path)
 
     # Rename columns to standard names
     df = df.rename(columns={

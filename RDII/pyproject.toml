@@ -13,6 +13,7 @@ requires-python = ">=3.8"
 dependencies = [
     "pandas>=1.5.0",
     "numpy>=1.23.0",
+    "pytest>= 7.0.0"
 ]
 
 

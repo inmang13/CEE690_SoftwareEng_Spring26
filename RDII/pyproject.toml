@@ -1,11 +1,20 @@
+[build-system]
+requires=["setuptools>=61.0"]
+build-backend= "setuptools.build_meta"
+
+
 [project]
 name = "rdii-analysis"
 version = "0.1.0"
 description = "RDII analysis for Durham sewer flow meters"
-authors = [{name = "Your Name", email = "gi23@duke.edu"}]
+authors = [{name = "Grace Inman", email = "gi23@duke.edu"}]
 requires-python = ">=3.8"
 
 dependencies = [
     "pandas>=1.5.0",
     "numpy>=1.23.0",
 ]
+
+
+[tool.setuptools.packages.find]
+where = ["src"]

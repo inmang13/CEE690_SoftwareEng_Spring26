@@ -5,9 +5,7 @@ import os
 import sys
 from pathlib import Path
 
-import pandas as pd
-
-from preprocessing.data_loader import read_all_flow_meters
+from rdii.data_loader import read_all_flow_meters
 
 # Get absolute paths
 SCRIPT_DIR = Path(__file__).parent

@@ -107,6 +107,13 @@ def extract_meter_name(filename):
     Ex. Filename = DURHAM_DBO_20230101-20260101.csv
     """
     parts = filename.split('_')
+
+    if parts[0] != 'DURHAM':
+        raise ValueError(
+            f"Filename '{filename}' doesn't match expected pattern "
+            f"'DURHAM_METER_...'"
+        )
+    
     if len(parts) < 2:
         raise ValueError(
             f"Filename '{filename}' doesn't match expected pattern "

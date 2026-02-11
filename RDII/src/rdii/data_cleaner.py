@@ -41,14 +41,17 @@ def _clean_single_meter(df, flow_col, freq, interp_limit):
 
     # Sort by time
     df = df.sort_values('DateTime').copy()
+    df=df[['DateTime', flow_col,'Meter','Source_File']]
     
     # Enforce regular timestep
     df = enforce_regular_timestep(df, freq)
     
+    
     # Apply cleaning steps and track what happened
-    df, flatline_mask = remove_flatlines(df, flow_col)
+    df, negative_mask = remove_negative_flows(df, flow_col, threshold=0.0)
+    df, flatline_mask = remove_flatlines(df, flow_col,)
     df, interpolated_mask = interpolate_gaps(df, flow_col, interp_limit)
-    df = add_qc_flags(df, flow_col, interpolated_mask, flatline_mask)  
+    df = add_qc_flags(df, flow_col, interpolated_mask, negative_mask, flatline_mask)  
 
     return df
 
@@ -64,7 +67,20 @@ def enforce_regular_timestep(df, freq):
     
     # Create regular frequency
     original_len = len(df)
-    df = df.asfreq(freq)
+
+    # Separate numeric and non-numeric columns
+    numeric_cols = df.select_dtypes(include=[np.number]).columns
+    non_numeric_cols = df.select_dtypes(exclude=[np.number]).columns
+
+    # Resample numeric columns (take mean)
+    df_numeric = df[numeric_cols].resample(freq, label='left', closed='left').mean()
+    
+    # Resample non-numeric columns (take first value)
+    df_non_numeric = df[non_numeric_cols].resample(freq, label='left', closed='left').first()
+    
+    # Combine back together
+    df = pd.concat([df_numeric, df_non_numeric], axis=1)
+    
     new_len = len(df)
     
     added = new_len - original_len
@@ -75,6 +91,23 @@ def enforce_regular_timestep(df, freq):
     df = df.reset_index()
     
     return df
+
+def remove_negative_flows(df,flow_col,threshold,verbose=True):
+    """
+    Remove negative or physically impossible flow values.
+    """
+    df = df.copy()
+    
+    # Detect negative flows
+    negative_mask = df[flow_col] < threshold
+    negative_count = negative_mask.sum()
+    
+    if negative_count > 0:
+        if verbose:
+            print(f"  Removed {negative_count} negative/invalid flow values")
+        df.loc[negative_mask, flow_col] = np.nan
+    
+    return df, negative_mask
 
 
 def remove_flatlines(df, flow_col, window=48):
@@ -107,15 +140,14 @@ def interpolate_gaps(df, flow_col, interp_limit):
     
     # Track which values were NaN before interpolation
     was_nan = df[flow_col].isna()
-    nan_before = was_nan.sum()    
+    nan_before = was_nan.sum()   
 
-    # Set DateTime as index for time-based interpolation
-    df = df.set_index('DateTime')
     
     # time based linear interpolation for small data gaps
     df[flow_col] = df[flow_col].interpolate(
-        method='time',
-        limit=interp_limit
+        method='linear',
+        limit=interp_limit,
+        limit_direction='both',
     )
 
     # Reset index back to column
@@ -134,7 +166,7 @@ def interpolate_gaps(df, flow_col, interp_limit):
     return df, is_now_filled
 
 
-def add_qc_flags(df, flow_col,interpolated_mask, flatline_mask):
+def add_qc_flags(df, flow_col,interpolated_mask, negative_mask, flatline_mask):
 
     """
     Add quality control flags.    
@@ -146,7 +178,10 @@ def add_qc_flags(df, flow_col,interpolated_mask, flatline_mask):
 
     # Mark interpolated values
     df.loc[interpolated_mask, 'QC_flag'] = 'INTERPOLATED'
-    
+
+    # Mark negative values
+    df.loc[negative_mask, 'QC_flag'] = 'NEGATIVE'
+
     # Mark removed flatlines (may overwrite INTERPOLATED if both)
     df.loc[flatline_mask, 'QC_flag'] = 'FLATLINE_REMOVED'
     

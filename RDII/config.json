@@ -1,0 +1,13 @@
+{
+  "paths": {
+    "raw_data": "data/raw/Durham",
+    "processed_data": "data/processed",
+    "combined_filename": "combined_flow_data.csv",
+    "cleaned_filename": "cleaned_flow_data.csv"
+  },
+  "cleaning": {
+    "flow_column": "Flow_MGD",
+    "frequency": "15min",
+    "interpolation_limit": 4
+  }
+}

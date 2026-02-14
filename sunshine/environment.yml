@@ -1,6 +1,0 @@
-name: sunshine
-channels:
-  - defaults
-dependencies:
-  - python=3.11
-prefix: /hpc/home/gi23/miniconda3/envs/sunshine

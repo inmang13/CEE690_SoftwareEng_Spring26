@@ -15,6 +15,13 @@ def clean_sewer_timeseries(
     Clean sewer flow timeseries meter-by-meter.
     """
 
+    # Handle empty dataframe
+    if len(df) == 0:
+        # Return empty df with QC_flag column
+        result = df.copy()
+        result['QC_flag'] = pd.Series(dtype='object')
+        return result
+
     cleaned_all = []
     
     for meter, group in df.groupby('Meter'):

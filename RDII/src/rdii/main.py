@@ -9,6 +9,8 @@ import pandas as pd
 
 from rdii.data_loader import read_all_flow_meters
 from rdii.data_cleaner import clean_sewer_timeseries
+from rdii.plots import plot_all_meters
+
 
 
 def load_config(config_path: str) -> dict:
@@ -82,6 +84,8 @@ def main(config_path: str = 'config.json'):
     project_root = Path(config['project_root']) if 'project_root' in config else Path(__file__).parent.parent.parent
     raw_data_dir = project_root / config['paths']['raw_data']
     processed_dir = project_root / config['paths']['processed_data']
+    plot_dir = project_root / config['paths']['plots_dir']
+
     combined_file = processed_dir / config['paths']['combined_filename']
     cleaned_file = processed_dir / config['paths']['cleaned_filename']
     
@@ -110,10 +114,19 @@ def main(config_path: str = 'config.json'):
         print(f"✗ Failed to clean data: {e}")
         sys.exit(1)
     
+    #Step 3: Create plots (optional, can be added later)
+    print("\nStep 3: Creating QC plots...")
+    print("-" * 70)
+    try:
+        saved_files = plot_all_meters(cleaned_data, output_dir=plot_dir, verbose=True)
+    except Exception as e:
+        print(f"✗ Failed to create plots: {e}")
+        sys.exit(1)
+
+
     print("\n" + "=" * 70)
     print("✓ PIPELINE COMPLETE")
     print("=" * 70)
-
 
 if __name__ == "__main__":
     config_file = sys.argv[1] if len(sys.argv) > 1 else 'config.json'

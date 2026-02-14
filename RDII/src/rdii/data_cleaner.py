@@ -140,30 +140,40 @@ def interpolate_gaps(df, flow_col, interp_limit):
     
     # Track which values were NaN before interpolation
     was_nan = df[flow_col].isna()
-    nan_before = was_nan.sum()   
-
     
-    # time based linear interpolation for small data gaps
+    # Find gap sizes (in terms of consecutive NaNs)
+    # Create groups of consecutive NaNs
+    nan_groups = (was_nan != was_nan.shift()).cumsum()
+    gap_sizes = was_nan.groupby(nan_groups).transform('sum')
+
+    # Only interpolate small gaps
+    should_interpolate = was_nan & (gap_sizes <= 4)
+
+    # Find gap sizes (in terms of consecutive NaNs)
+    # Create groups of consecutive NaNs
+    nan_groups = (was_nan != was_nan.shift()).cumsum()
+    gap_sizes = was_nan.groupby(nan_groups).transform('sum')
+
+    # Only interpolate small gaps
+    should_interpolate = was_nan & (gap_sizes <= 4)
+
+    # Temporarily mark large gaps so they won't be interpolated
+    df.loc[~should_interpolate & was_nan, flow_col] = -999999
+
+    # Linear interpolation for small gaps only
     df[flow_col] = df[flow_col].interpolate(
         method='linear',
         limit=interp_limit,
-        limit_direction='both',
+        limit_direction='both'
     )
 
-    # Reset index back to column
-    df = df.reset_index()
+    # Restore large gaps as NaN
+    df.loc[df[flow_col] == -999999, flow_col] = np.nan
 
-    # Track which NaNs were filled
-    is_now_filled = was_nan & df[flow_col].notna()
-    interpolated =is_now_filled.sum()
-    nan_after = df[flow_col].isna().sum()
-    
-    if interpolated > 0:
-        print(f"  Interpolated {interpolated} values")
-    if nan_after > 0:
-        print(f"  {nan_after} NaNs remaining")
-    
-    return df, is_now_filled
+    # Identify which NaNs were filled
+    interpolated_mask = should_interpolate & df[flow_col].notna()
+        
+    return df, interpolated_mask
 
 
 def add_qc_flags(df, flow_col,interpolated_mask, negative_mask, flatline_mask):

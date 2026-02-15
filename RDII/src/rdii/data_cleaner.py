@@ -57,8 +57,9 @@ def _clean_single_meter(df, flow_col, freq, interp_limit):
     # Apply cleaning steps and track what happened
     df, negative_mask = remove_negative_flows(df, flow_col, threshold=0.0)
     df, flatline_mask = remove_flatlines(df, flow_col,)
+    df, outlier_mask = remove_low_outliers(df, flow_col, window=30, threshold_multiplier=3)
     df, interpolated_mask = interpolate_gaps(df, flow_col, interp_limit)
-    df = add_qc_flags(df, flow_col, interpolated_mask, negative_mask, flatline_mask)  
+    df = add_qc_flags(df, flow_col, interpolated_mask, negative_mask, flatline_mask,outlier_mask)  
 
     return df
 
@@ -183,7 +184,66 @@ def interpolate_gaps(df, flow_col, interp_limit):
     return df, interpolated_mask
 
 
-def add_qc_flags(df, flow_col,interpolated_mask, negative_mask, flatline_mask):
+def remove_low_outliers(df, flow_col, window=14, threshold_multiplier=3,verbose=True):
+    """
+    Remove low outliers based on daily minimums using robust MAD detection.
+    """
+
+    df = df.copy()
+
+    # Extract date from DateTime
+    df['Date'] = pd.to_datetime(df['DateTime']).dt.date
+    
+    # Calculate daily minimum for each date
+    daily_min = (
+        df.groupby('Date')[flow_col]
+        .min()
+        .reset_index()
+        .rename(columns={flow_col: 'min_flow'})
+    )
+    
+    flow = daily_min['min_flow']
+
+    # Rolling baseline (median is robust to outliers)
+    rolling_median = flow.rolling(window, center=True).median()
+
+    # difference from local baseline
+    deviation = flow - rolling_median
+
+    # estimate spread using MAD (robust)
+    mad = deviation.abs().rolling(window, center=True).median()
+
+    threshold = -threshold_multiplier * 1.4826 * mad
+    
+    # Identify negative spikes (days with suspiciously low minimums)
+    neg_spikes = deviation < threshold
+    outlier_count = neg_spikes.sum()
+
+    if verbose:
+        print(f"  Detected {outlier_count} days with anomalously low daily minimums")
+
+    # Mark those days' min_flow as NaN
+    daily_min.loc[neg_spikes, 'min_flow'] = np.nan
+    
+    # Get the dates that were flagged as outliers
+    flagged_dates = daily_min.loc[neg_spikes, 'Date'].values
+    
+    # Create mask for all records from flagged days
+    outlier_mask = df['Date'].isin(flagged_dates)
+    outlier_record_count = outlier_mask.sum()
+    
+    if outlier_record_count > 0:
+        if verbose:
+            print(f"  Removed {outlier_record_count} records from {outlier_count} flagged days")
+        df.loc[outlier_mask, flow_col] = np.nan
+    
+    # Clean up temporary column
+    df = df.drop('Date', axis=1)
+    
+    return df, outlier_mask
+
+
+def add_qc_flags(df, flow_col,interpolated_mask, negative_mask, flatline_mask,outlier_mask):
 
     """
     Add quality control flags.    
@@ -195,6 +255,9 @@ def add_qc_flags(df, flow_col,interpolated_mask, negative_mask, flatline_mask):
 
     # Mark interpolated values
     df.loc[interpolated_mask, 'QC_flag'] = 'INTERPOLATED'
+
+    # Mark low outliers values
+    df.loc[outlier_mask, 'QC_flag'] = 'LOW_OUTLIER'
 
     # Mark negative values
     df.loc[negative_mask, 'QC_flag'] = 'NEGATIVE'

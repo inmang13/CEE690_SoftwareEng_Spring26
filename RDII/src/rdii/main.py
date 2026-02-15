@@ -9,6 +9,7 @@ import pandas as pd
 
 from rdii.data_loader import read_all_flow_meters
 from rdii.data_cleaner import clean_sewer_timeseries
+from rdii.remove_BWI import calculate_BWI_minflow
 from rdii.plots import plot_all_meters
 
 
@@ -118,7 +119,11 @@ def main(config_path: str = 'config.json'):
     print("\nStep 3: Creating QC plots...")
     print("-" * 70)
     try:
-        saved_files = plot_all_meters(cleaned_data, output_dir=plot_dir, verbose=True)
+        # Create QC plots for all meters
+        plot_all_meters(cleaned_data, plot_type='qc')
+        # Create BWI estimate plots for all meters
+        plot_all_meters(cleaned_data, plot_type='bwi')
+
     except Exception as e:
         print(f"✗ Failed to create plots: {e}")
         sys.exit(1)

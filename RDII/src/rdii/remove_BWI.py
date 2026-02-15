@@ -48,3 +48,19 @@ def calculate_BWI_minflow(df, fraction_min=0.85, rolling_window=30, night_start=
     bwi_estimate = mnf_15min * fraction_min
 
     return bwi_estimate
+
+def remove_BWI(df, bwi_estimate):
+    """
+    Remove BWI estimate from original flow data.
+    """
+    
+    df_corrected = df.copy()
+    
+    # Ensure DateTime is index
+    if 'DateTime' in df_corrected.columns:
+        df_corrected = df_corrected.set_index('DateTime')
+    
+    # Subtract BWI estimate from original flow
+    df_corrected['Flow_MGD_BWI_Corrected'] = df_corrected['Flow_MGD'] - bwi_estimate
+    
+    return df_corrected.reset_index()

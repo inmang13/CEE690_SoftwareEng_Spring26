@@ -1,9 +1,11 @@
 {
+
   "paths": {
     "raw_data": "data/raw/Durham",
     "processed_data": "data/processed",
     "combined_filename": "combined_flow_data.csv",
     "cleaned_filename": "cleaned_flow_data.csv",
+    "bwi_corrected_filename": "cleaned_bwi.csv",
     "plots_dir": "results/plots"
   },
   "cleaning": {
@@ -11,8 +13,18 @@
     "frequency": "15min",
     "interpolation_limit": 4
   },
+  "bwi": {
+    "fraction_min": 0.85,
+    "rolling_window": 30,
+    "night_start": 1,
+    "night_end": 7
+  },
   "plottting": {
+    "plot":"False",
     "figsize": [14, 6],
     "dpi": 300
+  },
+  "parallel": {
+    "n_workers": 15
   }
 }

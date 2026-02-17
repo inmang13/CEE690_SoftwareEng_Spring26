@@ -1,7 +1,10 @@
 # src/rdii/plots.py
 """Module for creating visualizations of flow data and QC flags."""
 
+import sys
 import matplotlib.pyplot as plt
+import json
+from pathlib import Path
 import pandas as pd
 from pathlib import Path
 from rdii.remove_BWI import calculate_BWI_minflow
@@ -81,7 +84,6 @@ def plot_meter_qc(df,meter_name,output_dir='results/plots',figsize=(14, 6),dpi=3
     plt.savefig(output_file, dpi=dpi, bbox_inches='tight')
     plt.close()
     
-    print(f"✓ Saved plot to {output_file}")
     
     return output_file
 
@@ -132,11 +134,10 @@ def plot_BWI_estimate(df, meter_name, output_dir='results/plots', figsize=(14, 6
     plt.savefig(output_file, dpi=dpi, bbox_inches='tight')
     plt.close()
     
-    print(f"✓ Saved plot to {output_file}")
     
     return output_file
 
-def plot_all_meters(df,output_dir = 'results/plots',figsize =(14, 6),dpi= 300,plot_type = 'qc',verbose = True):
+def plot_all_meters(df,output_dir = 'results/plots',figsize =(14, 6),dpi= 300,plot_type = 'qc',verbose = False):
     """
     Create  plots for all meters in the dataset.
     """
@@ -176,10 +177,10 @@ def plot_all_meters(df,output_dir = 'results/plots',figsize =(14, 6),dpi= 300,pl
             
             if output_file:
                 saved_files.append(output_file)
-                if verbose:
+                if Plotting:
                     print(f"✓ Saved to {output_file.name}")
             else:
-                if verbose:
+                if Plotting:
                     print("✗ No data")
                     
         except Exception as e:
@@ -191,3 +192,58 @@ def plot_all_meters(df,output_dir = 'results/plots',figsize =(14, 6),dpi= 300,pl
         print(f"✓ Successfully created {len(saved_files)} plots")
     
     return saved_files
+
+def load_config(config_path ):
+        """Load configuration from JSON file."""
+        with open(config_path, 'r') as f:
+            return json.load(f)
+        
+
+def main(config_path: str = 'config.json'):
+        
+        # Load configuration
+        try:
+            config = load_config(config_path)
+        except FileNotFoundError:
+            print(f"✗ Config file not found: {config_path}")
+            sys.exit(1)
+        except json.JSONDecodeError as e:
+            print(f"✗ Invalid JSON in config file: {e}")
+            sys.exit(1)
+        
+        # Setup paths
+        project_root = Path(config['project_root']) if 'project_root' in config else Path(__file__).parent.parent.parent
+        raw_data_dir = project_root / config['paths']['raw_data']
+        processed_dir = project_root / config['paths']['processed_data']
+        combined_file = processed_dir / config['paths']['combined_filename']        
+        processed_dir.mkdir(parents=True, exist_ok=True)
+
+        combined_file = processed_dir / config['paths']['combined_filename']
+        cleaned_file = processed_dir / config['paths']['cleaned_filename']
+
+        # Load cleaned data
+        try:
+            cleaned_data = pd.read_csv(cleaned_file)
+            print(f"✓ Loaded cleaned data with {len(cleaned_data)} rows and {len(cleaned_data['Meter'].unique())} meters")
+        except Exception as e:
+            print(f"✗ Failed to load cleaned data: {e}")
+            sys.exit(1)
+
+        try:
+                # Create QC plots for all meters
+                print("Creating QC plots for all meters...")
+                plot_all_meters(cleaned_data, plot_type='qc')
+                # Create BWI estimate plots for all meters
+                print("Creating BWI estimate plots for all meters...")
+                plot_all_meters(cleaned_data, plot_type='bwi')
+
+        except Exception as e:
+            print(f"✗ Failed to create plots: {e}")
+            sys.exit(1)
+
+
+
+if __name__ == "__main__":
+        config_file = sys.argv[1] if len(sys.argv) > 1 else 'config.json'
+        main(config_file)
+        

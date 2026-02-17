@@ -1,15 +1,30 @@
 # src/rdii/data_cleaner.py
 """Module for cleaning sewer flow timeseries data."""
 
+import sys
 import pandas as pd
 import numpy as np
+from concurrent.futures import ProcessPoolExecutor
+import os
+from pathlib import Path
+from rdii.data_loader import read_all_flow_meters
+import json
 
+def _clean_meter_wrapper(args):
+    group, flow_col, freq, interp_limit = args
+    return _clean_single_meter(
+        group,
+        flow_col=flow_col,
+        freq=freq,
+        interp_limit=interp_limit
+    )
 
 def clean_sewer_timeseries(
     df,
     flow_col='Flow_MGD',
     freq='15min',
-    interp_limit=4
+    interp_limit=4,
+    n_workers=None
 ):
     """
     Clean sewer flow timeseries meter-by-meter.
@@ -22,21 +37,20 @@ def clean_sewer_timeseries(
         result['QC_flag'] = pd.Series(dtype='object')
         return result
 
-    cleaned_all = []
-    
-    for meter, group in df.groupby('Meter'):
-        print(f"\nCleaning meter: {meter}")
-        
-        # Clean individual meter
-        cleaned = _clean_single_meter(
-            group,
-            flow_col=flow_col,
-            freq=freq,
-            interp_limit=interp_limit
-        )
-        
-        cleaned_all.append(cleaned)
-    
+    # Default = all available cores
+    if n_workers is None:
+        n_workers = os.cpu_count()
+
+    # Split by meter
+    groups = [
+        (group, flow_col, freq, interp_limit)
+        for _, group in df.groupby('Meter')
+    ]
+
+    # Run meters in parallel
+    with ProcessPoolExecutor(max_workers=n_workers) as executor:
+        cleaned_all = list(executor.map(_clean_meter_wrapper, groups))
+
     return pd.concat(cleaned_all, ignore_index=True)
 
 
@@ -100,7 +114,7 @@ def enforce_regular_timestep(df, freq):
     
     return df
 
-def remove_negative_flows(df,flow_col,threshold,verbose=True):
+def remove_negative_flows(df,flow_col,threshold,verbose=False):
     """
     Remove negative or physically impossible flow values.
     """
@@ -111,8 +125,6 @@ def remove_negative_flows(df,flow_col,threshold,verbose=True):
     negative_count = negative_mask.sum()
     
     if negative_count > 0:
-        if verbose:
-            print(f"  Removed {negative_count} negative/invalid flow values")
         df.loc[negative_mask, flow_col] = np.nan
     
     return df, negative_mask
@@ -129,9 +141,6 @@ def remove_flatlines(df, flow_col, window=48):
     # Detect flatlines (zero standard deviation)
     flatlines = df[flow_col].rolling(window).std() == 0
     flat_count = flatlines.sum()
-    
-    if flat_count > 0:
-        print(f"  Removed {flat_count} flatline points")
     
     df.loc[flatlines, flow_col] = np.nan
     
@@ -184,7 +193,7 @@ def interpolate_gaps(df, flow_col, interp_limit):
     return df, interpolated_mask
 
 
-def remove_low_outliers(df, flow_col, window=14, threshold_multiplier=3,verbose=True):
+def remove_low_outliers(df, flow_col, window=14, threshold_multiplier=3,verbose=False):
     """
     Remove low outliers based on daily minimums using robust MAD detection.
     """
@@ -219,9 +228,6 @@ def remove_low_outliers(df, flow_col, window=14, threshold_multiplier=3,verbose=
     neg_spikes = deviation < threshold
     outlier_count = neg_spikes.sum()
 
-    if verbose:
-        print(f"  Detected {outlier_count} days with anomalously low daily minimums")
-
     # Mark those days' min_flow as NaN
     daily_min.loc[neg_spikes, 'min_flow'] = np.nan
     
@@ -233,8 +239,6 @@ def remove_low_outliers(df, flow_col, window=14, threshold_multiplier=3,verbose=
     outlier_record_count = outlier_mask.sum()
     
     if outlier_record_count > 0:
-        if verbose:
-            print(f"  Removed {outlier_record_count} records from {outlier_count} flagged days")
         df.loc[outlier_mask, flow_col] = np.nan
     
     # Clean up temporary column
@@ -269,3 +273,69 @@ def add_qc_flags(df, flow_col,interpolated_mask, negative_mask, flatline_mask,ou
     df.loc[df[flow_col].isna(), 'QC_flag'] = 'MISSING' 
 
     return df
+
+def load_or_combine_data(raw_dir, combined_file, verbose = False):
+        """Load existing combined data or create from raw files."""
+        if combined_file.exists():
+            if verbose:
+                print(f"Found existing file: {combined_file.name}")
+                print("Loading from file...")
+            flow_data = pd.read_csv(combined_file, parse_dates=['DateTime'])
+            if verbose:
+                print(f"✓ Loaded {len(flow_data):,} records")
+        else:
+            if verbose:
+                print("Loading from raw CSV files...")
+            flow_data = read_all_flow_meters(str(raw_dir), verbose=verbose)
+            flow_data.to_csv(combined_file, index=False)
+            if verbose:
+                print(f"✓ Saved combined data to: {combined_file}")
+        
+        return flow_data
+
+def load_config(config_path ):
+        """Load configuration from JSON file."""
+        with open(config_path, 'r') as f:
+            return json.load(f)
+
+def main(config_path: str = 'config.json'):
+        
+        # Load configuration
+        try:
+            config = load_config(config_path)
+        except FileNotFoundError:
+            print(f"✗ Config file not found: {config_path}")
+            sys.exit(1)
+        except json.JSONDecodeError as e:
+            print(f"✗ Invalid JSON in config file: {e}")
+            sys.exit(1)
+        
+        # Setup paths
+        project_root = Path(config['project_root']) if 'project_root' in config else Path(__file__).parent.parent.parent
+        raw_data_dir = project_root / config['paths']['raw_data']
+        processed_dir = project_root / config['paths']['processed_data']
+        combined_file = processed_dir / config['paths']['combined_filename']        
+        processed_dir.mkdir(parents=True, exist_ok=True)
+
+        combined_file = processed_dir / config['paths']['combined_filename']
+        cleaned_file = processed_dir / config['paths']['cleaned_filename']
+
+        # Load data
+        df = load_or_combine_data(raw_data_dir, combined_file)
+        clean_data = clean_sewer_timeseries(
+            df,
+            flow_col=config['cleaning']['flow_column'],
+            freq=config['cleaning']['frequency'],
+            interp_limit=config['cleaning']['interpolation_limit']
+        )
+
+        print(f"✓ Loaded cleaned data with {len(clean_data)} rows and {len(clean_data['Meter'].unique())} meters")
+        
+        clean_data.to_csv(cleaned_file, index=False)
+        print(f"✓ Saved cleaned data to: {cleaned_file}")
+
+
+if __name__ == "__main__":
+        config_file = sys.argv[1] if len(sys.argv) > 1 else 'config.json'
+        main(config_file)
+        

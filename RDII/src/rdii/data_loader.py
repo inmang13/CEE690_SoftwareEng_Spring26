@@ -1,10 +1,13 @@
 """
-Module for loading Durham flow meter data from CSV files"
+Module for loading Durham flow meter data from CSV files
 """
 
 import glob
 import os
+import sys
+from pathlib import Path
 import pandas as pd
+import json
 
 def read_flow_meter_data(file_path):
     """
@@ -51,7 +54,7 @@ def read_flow_meter_data(file_path):
     return df
 
 
-def read_all_flow_meters(directory_path, verbose=True):
+def read_all_flow_meters(directory_path, verbose=False):
     """
     Read all flow meters files in a directory.
     """
@@ -120,6 +123,42 @@ def extract_meter_name(filename):
             f"'DURHAM_METER_...'")
     return parts[1]
 
+def load_config(config_path ):
+        """Load configuration from JSON file."""
+        with open(config_path, 'r') as f:
+            return json.load(f)
 
+def main(config_path: str = 'config.json'):
+        
+        # Load configuration
+        try:
+            config = load_config(config_path)
+        except FileNotFoundError:
+            print(f"✗ Config file not found: {config_path}")
+            sys.exit(1)
+        except json.JSONDecodeError as e:
+            print(f"✗ Invalid JSON in config file: {e}")
+            sys.exit(1)
+        
+        # Setup paths
+        project_root = Path(config['project_root']) if 'project_root' in config else Path(__file__).parent.parent.parent
+        raw_data_dir = project_root / config['paths']['raw_data']
+        processed_dir = project_root / config['paths']['processed_data']
+        combined_file = processed_dir / config['paths']['combined_filename']        
+        processed_dir.mkdir(parents=True, exist_ok=True)
 
+        combined_file = processed_dir / config['paths']['combined_filename']
+
+        # Load data
+        df = read_all_flow_meters(raw_data_dir)
+
+        print(f"✓ Loaded data with {len(df)} rows and {len(df['Meter'].unique())} meters")
+
+        # Save Data
+        df.to_csv(combined_file, index=False)
+        print(f"✓ Saved combined data to: {combined_file}")
+        
+if __name__ == "__main__":
+        config_file = sys.argv[1] if len(sys.argv) > 1 else 'config.json'
+        main(config_file)
         

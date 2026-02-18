@@ -4,9 +4,7 @@
 import sys
 import pandas as pd
 import numpy as np
-from concurrent.futures import ProcessPoolExecutor
 from pathlib import Path
-import os
 import json
 
 def process_all_meters_BWI(
@@ -15,7 +13,6 @@ def process_all_meters_BWI(
     rolling_window=30,
     night_start=1,
     night_end=7,
-    n_workers=None
 ):
     """
     Apply BWI calculation and removal to all meters in parallel.
@@ -25,38 +22,23 @@ def process_all_meters_BWI(
         result = df.copy()
         return result
 
-    if n_workers is None:
-        n_workers = os.cpu_count()
+    results = []
 
-    # Split DataFrame by Meter
-    groups = [
-        (group.copy(), fraction_min, rolling_window, night_start, night_end)
-        for _, group in df.groupby("Meter")
-    ]
+    df['DateTime'] = pd.to_datetime(df['DateTime'])
 
-    # Process in parallel
-    with ProcessPoolExecutor(max_workers=n_workers) as executor:
-        results = list(executor.map(_process_meter_BWI, groups))
+    for _, group in df.groupby("Meter"):
+        bwi_estimate = calculate_BWI_minflow(
+            group,
+            fraction_min=fraction_min,
+            rolling_window=rolling_window,
+            night_start=night_start,
+            night_end=night_end
+        )
 
-    # Combine all meters
+        corrected_df = remove_BWI(group, bwi_estimate)
+        results.append(corrected_df)
+
     return pd.concat(results, ignore_index=True)
-
-def _process_meter_BWI(args):
-    """
-    Worker function for a single meter.
-    """
-    meter_df, fraction_min, rolling_window, night_start, night_end = args
-    
-    bwi_estimate = calculate_BWI_minflow(
-        meter_df,
-        fraction_min=fraction_min,
-        rolling_window=rolling_window,
-        night_start=night_start,
-        night_end=night_end
-    )
-    
-    corrected_df = remove_BWI(meter_df, bwi_estimate)
-    return corrected_df
 
 
 def calculate_BWI_minflow(df, fraction_min=0.85, rolling_window=30, night_start=1, night_end=7):
@@ -96,9 +78,20 @@ def calculate_BWI_minflow(df, fraction_min=0.85, rolling_window=30, night_start=
         min_periods=max(1, rolling_window // 3)  # Require at least 1/3 of window
     ).mean()
     
-    # Align smoothed daily MNF to original 15-min resolution
-    # Forward-fill to propagate each day's value across all its 15-min intervals
-    mnf_15min = mnf_smoothed.reindex(df_night.index, method='ffill')
+    # Expand daily MNF to 15‑minute resolution
+    mnf_15min = (
+        mnf_smoothed
+        .resample('15min')
+        .ffill()
+    )
+
+    # Align exactly to original data index
+    mnf_15min = (
+        mnf_15min
+        .reindex(df_night.index)
+        .ffill()
+        .bfill()
+    )
     
     # Apply fraction to get BWI estimate
     bwi_estimate = mnf_15min * fraction_min
@@ -153,22 +146,22 @@ def main(config_path: str = 'config.json'):
         # Load cleaned data
         try:
             cleaned_data = pd.read_csv(cleaned_file)
+            print(cleaned_data.head())
             print(f"✓ Loaded cleaned data with {len(cleaned_data)} rows and {len(cleaned_data['Meter'].unique())} meters")
         except Exception as e:
             print(f"✗ Failed to load cleaned data: {e}")
             sys.exit(1)
 
-        try:
-            n_workers = int(config.get('parallel', {}).get('n_workers', os.cpu_count()))
-            
+        try:   
             cleaned_bwi = process_all_meters_BWI(
                 cleaned_data,
                 fraction_min=config['bwi']['fraction_min'],
                 rolling_window=config['bwi']['rolling_window'],
                 night_start=config['bwi']['night_start'],
-                night_end=config['bwi']['night_end'],
-                n_workers=n_workers
-            )
+                night_end=config['bwi']['night_end']
+                                        )
+
+            print(cleaned_bwi.head())
             
             cleaned_bwi.to_csv(bwi_corrected_file, index=False)
             print(f"✓ Saved clean_bwi data to: {bwi_corrected_file}")

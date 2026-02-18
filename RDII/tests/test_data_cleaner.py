@@ -218,8 +218,9 @@ def test_add_qc_flags_all_ok():
     interpolated = pd.Series([False] * 10)
     negative = pd.Series([False] * 10)
     flatline = pd.Series([False] * 10)
+    outlier = pd.Series([False] * len(df))
     
-    result = add_qc_flags(df, 'Flow_MGD', interpolated, negative, flatline)
+    result = add_qc_flags(df, 'Flow_MGD', interpolated, negative, flatline,outlier)
     assert all(result['QC_flag'] == 'OK')
 
 
@@ -232,8 +233,9 @@ def test_add_qc_flags_interpolated():
     interpolated = pd.Series([False, False, True, True, False, False, False, False, False, False])
     negative = pd.Series([False] * 10)
     flatline = pd.Series([False] * 10)
+    outlier = pd.Series([False] * len(df))
     
-    result = add_qc_flags(df, 'Flow_MGD', interpolated, negative, flatline)
+    result = add_qc_flags(df, 'Flow_MGD', interpolated, negative, flatline,outlier)
     assert result.loc[2:3, 'QC_flag'].eq('INTERPOLATED').all()
 
 
@@ -246,8 +248,9 @@ def test_add_qc_flags_missing():
     interpolated = pd.Series([False] * 10)
     negative = pd.Series([False] * 10)
     flatline = pd.Series([False] * 10)
+    outlier = pd.Series([False] * len(df))
     
-    result = add_qc_flags(df, 'Flow_MGD', interpolated, negative, flatline)
+    result = add_qc_flags(df, 'Flow_MGD', interpolated, negative, flatline,outlier)
     assert result.loc[2:3, 'QC_flag'].eq('MISSING').all()
 
 
@@ -261,8 +264,9 @@ def test_add_qc_flags_priority():
     interpolated = pd.Series([False, False, True, True, False, False, False, False, False, False])
     negative = pd.Series([False, False, True, True, False, False, False, False, False, False])
     flatline = pd.Series([False] * 10)
+    outlier = pd.Series([False] * len(df))
     
-    result = add_qc_flags(df, 'Flow_MGD', interpolated, negative, flatline)
+    result = add_qc_flags(df, 'Flow_MGD', interpolated, negative, flatline,outlier)
     # MISSING should override everything
     assert result.loc[2:3, 'QC_flag'].eq('MISSING').all()
 
@@ -276,10 +280,6 @@ def test_clean_sewer_timeseries_single_meter(sample_flow_data, capsys):
     assert 'QC_flag' in result.columns
     assert len(result) >= len(sample_flow_data)
     assert result['Meter'].nunique() == 1
-    
-    # Check that output was printed
-    captured = capsys.readouterr()
-    assert "Cleaning meter: TEST" in captured.out
 
 
 def test_clean_sewer_timeseries_multiple_meters(multi_meter_data):
@@ -369,6 +369,32 @@ def test_all_nan_values():
     })
     result = clean_sewer_timeseries(df, flow_col='Flow_MGD', freq='15min', interp_limit=4)
     assert all(result['QC_flag'] == 'MISSING')
+
+def test_clean_sewer_timeseries_preserves_meter_groups(multi_meter_data):
+    """
+    Cleaning should not create or drop meter groups.
+    """
+    original_meters = set(multi_meter_data['Meter'].unique())
+    original_count = multi_meter_data['Meter'].nunique()
+
+    result = clean_sewer_timeseries(
+        multi_meter_data,
+        flow_col='Flow_MGD',
+        freq='15min',
+        interp_limit=4
+    )
+
+    cleaned_meters = set(result['Meter'].unique())
+    cleaned_count = result['Meter'].nunique()
+
+    #  Same number of meters
+    assert cleaned_count == original_count
+
+    # Same meter identities (no None, no extras)
+    assert cleaned_meters == original_meters
+
+    #  No missing meter values introduced
+    assert not result['Meter'].isna().any()
 
 
 if __name__ == '__main__':

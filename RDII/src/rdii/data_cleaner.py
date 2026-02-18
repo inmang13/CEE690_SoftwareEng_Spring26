@@ -9,6 +9,8 @@ import os
 from pathlib import Path
 from rdii.data_loader import read_all_flow_meters
 import json
+import time
+
 
 def _clean_meter_wrapper(args):
     group, flow_col, freq, interp_limit = args
@@ -54,6 +56,19 @@ def clean_sewer_timeseries(
     return pd.concat(cleaned_all, ignore_index=True)
 
 
+def clean_sewer_timeseries_serial(
+    df,
+    flow_col='Flow_MGD',
+    freq='15min',
+    interp_limit=4,
+):
+    cleaned_all = []
+    for _, group in df.groupby('Meter'):
+        cleaned_all.append(
+            _clean_single_meter(group, flow_col, freq, interp_limit)
+        )
+    return pd.concat(cleaned_all, ignore_index=True)
+
 def _clean_single_meter(df, flow_col, freq, interp_limit):
 
     """
@@ -83,6 +98,15 @@ def enforce_regular_timestep(df, freq):
     """
     Enforce regular time intervals in the data.
     """
+    df=df.copy()
+    df['DateTime'] = pd.to_datetime(df['DateTime'], errors='coerce')
+
+    # Drop rows with invalid DateTime
+    bad_dt = df['DateTime'].isna().sum()
+    if bad_dt > 0:
+        print(f"⚠️ Dropping {bad_dt} rows with invalid DateTime")
+        df = df.dropna(subset=['DateTime'])
+
 
     # Set DateTime as index
     df = df.set_index('DateTime')
@@ -103,6 +127,10 @@ def enforce_regular_timestep(df, freq):
     # Combine back together
     df = pd.concat([df_numeric, df_non_numeric], axis=1)
     
+    for col in ['Meter', 'Source_File']:
+        if col in df.columns:
+            df[col] = df[col].ffill().bfill()
+
     new_len = len(df)
     
     added = new_len - original_len
@@ -322,6 +350,8 @@ def main(config_path: str = 'config.json'):
 
         # Load data
         df = load_or_combine_data(raw_data_dir, combined_file)
+        print(f"✓ Loaded data with {len(df)} rows and {len(df['Meter'].unique())} meters")
+
         clean_data = clean_sewer_timeseries(
             df,
             flow_col=config['cleaning']['flow_column'],
@@ -330,12 +360,12 @@ def main(config_path: str = 'config.json'):
         )
 
         print(f"✓ Loaded cleaned data with {len(clean_data)} rows and {len(clean_data['Meter'].unique())} meters")
-        
         clean_data.to_csv(cleaned_file, index=False)
         print(f"✓ Saved cleaned data to: {cleaned_file}")
 
 
 if __name__ == "__main__":
         config_file = sys.argv[1] if len(sys.argv) > 1 else 'config.json'
+
         main(config_file)
         

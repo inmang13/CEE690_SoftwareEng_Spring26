@@ -1,13 +1,14 @@
-# src/rdii/remove_BWI.py
-"""Module for calculating and removing Base Wastewater Infiltration (BWI) from flow data."""
+# src/rdii/remove_GWI.py
+"""Module for calculating and removing Base Wastewater Infiltration (GWI) from flow data."""
 
 import sys
 import pandas as pd
 import numpy as np
 from pathlib import Path
 import json
+from rdii.plots import plot_GWI_estimate
 
-def process_all_meters_BWI(
+def process_all_meters_GWI(
     df,
     fraction_min=0.85,
     rolling_window=30,
@@ -15,7 +16,7 @@ def process_all_meters_BWI(
     night_end=7,
 ):
     """
-    Apply BWI calculation and removal to all meters in parallel.
+    Apply GWI calculation and removal to all meters in parallel.
     """
 
     if len(df) == 0:
@@ -27,7 +28,7 @@ def process_all_meters_BWI(
     df['DateTime'] = pd.to_datetime(df['DateTime'])
 
     for _, group in df.groupby("Meter"):
-        bwi_estimate = calculate_BWI_minflow(
+        GWI_estimate = calculate_GWI_minflow(
             group,
             fraction_min=fraction_min,
             rolling_window=rolling_window,
@@ -35,15 +36,15 @@ def process_all_meters_BWI(
             night_end=night_end
         )
 
-        corrected_df = remove_BWI(group, bwi_estimate)
+        corrected_df = remove_GWI(group, gwi_estimate=GWI_estimate) 
         results.append(corrected_df)
 
     return pd.concat(results, ignore_index=True)
 
 
-def calculate_BWI_minflow(df, fraction_min=0.85, rolling_window=30, night_start=1, night_end=7):
+def calculate_GWI_minflow(df, fraction_min=0.85, rolling_window=30, night_start=1, night_end=7):
     """
-    Calculate Base Wastewater Infiltration (BWI) minimum flow using nighttime flows.
+    Calculate Base Wastewater Infiltration (GWI) minimum flow using nighttime flows.
 
     """
     
@@ -93,14 +94,14 @@ def calculate_BWI_minflow(df, fraction_min=0.85, rolling_window=30, night_start=
         .bfill()
     )
     
-    # Apply fraction to get BWI estimate
-    bwi_estimate = mnf_15min * fraction_min
+    # Apply fraction to get GWI estimate
+    gwi_estimate = mnf_15min * fraction_min
 
-    return bwi_estimate
+    return gwi_estimate
 
-def remove_BWI(df, bwi_estimate):
+def remove_GWI(df, gwi_estimate):
     """
-    Remove BWI estimate from original flow data.
+    Remove GWI estimate from original flow data.
     """
     
     df_corrected = df.copy()
@@ -109,8 +110,9 @@ def remove_BWI(df, bwi_estimate):
     if 'DateTime' in df_corrected.columns:
         df_corrected = df_corrected.set_index('DateTime')
     
-    # Subtract BWI estimate from original flow
-    df_corrected['Flow_MGD_BWI_Corrected'] = df_corrected['Flow_MGD'] - bwi_estimate
+    # Subtract GWI estimate from original flow
+    df_corrected['GWI_estimate'] = gwi_estimate
+    df_corrected['Flow_MGD_GWI_Corrected'] = df_corrected['Flow_MGD'] - gwi_estimate
     
     return df_corrected.reset_index()
 
@@ -136,12 +138,13 @@ def main(config_path: str = 'config.json'):
         project_root = Path(config['project_root']) if 'project_root' in config else Path(__file__).parent.parent.parent
         raw_data_dir = project_root / config['paths']['raw_data']
         processed_dir = project_root / config['paths']['processed_data']
-        combined_file = processed_dir / config['paths']['combined_filename']        
+        plots_dir= project_root / config['paths']['plots_dir']
+        combined_file = processed_dir / config['paths']['combined_filename']  
         processed_dir.mkdir(parents=True, exist_ok=True)
 
         combined_file = processed_dir / config['paths']['combined_filename']
         cleaned_file = processed_dir / config['paths']['cleaned_filename']
-        bwi_corrected_file = processed_dir / config['paths']['bwi_corrected_filename']
+        gwi_corrected_file = processed_dir / config['paths']['gwi_removed_filename']
 
         # Load cleaned data
         try:
@@ -152,22 +155,24 @@ def main(config_path: str = 'config.json'):
             print(f"✗ Failed to load cleaned data: {e}")
             sys.exit(1)
 
+
         try:   
-            cleaned_bwi = process_all_meters_BWI(
+            cleaned_gwi = process_all_meters_GWI(
                 cleaned_data,
-                fraction_min=config['bwi']['fraction_min'],
-                rolling_window=config['bwi']['rolling_window'],
-                night_start=config['bwi']['night_start'],
-                night_end=config['bwi']['night_end']
+                fraction_min=config['gwi']['fraction_min'],
+                rolling_window=config['gwi']['rolling_window'],
+                night_start=config['gwi']['night_start'],
+                night_end=config['gwi']['night_end']
                                         )
 
-            print(cleaned_bwi.head())
-            
-            cleaned_bwi.to_csv(bwi_corrected_file, index=False)
-            print(f"✓ Saved clean_bwi data to: {bwi_corrected_file}")
+            for meter_name, meter_df in cleaned_gwi.groupby('Meter'):
+                plot_GWI_estimate(meter_df, meter_name, output_dir=plots_dir)
+
+            cleaned_gwi.to_csv(gwi_corrected_file, index=False)
+            print(f"✓ Saved clean_gwi data to: {gwi_corrected_file}")
 
         except Exception as e:
-            print(f"✗ Failed to calculate/remove BWI: {e}")
+            print(f"✗ Failed to calculate/remove GWI: {e}")
             sys.exit(1)
 
         

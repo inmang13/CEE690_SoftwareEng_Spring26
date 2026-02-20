@@ -8,8 +8,10 @@ from concurrent.futures import ProcessPoolExecutor
 import os
 from pathlib import Path
 from rdii.data_loader import read_all_flow_meters
+from rdii.plots import plot_meter_qc
 import json
 import time
+from rdii.plots import plot_meter_qc
 
 
 def _clean_meter_wrapper(args):
@@ -341,6 +343,8 @@ def main(config_path: str = 'config.json'):
         # Setup paths
         project_root = Path(config['project_root']) if 'project_root' in config else Path(__file__).parent.parent.parent
         raw_data_dir = project_root / config['paths']['raw_data']
+        plots_dir= project_root / config['paths']['plots_dir']
+
         processed_dir = project_root / config['paths']['processed_data']
         combined_file = processed_dir / config['paths']['combined_filename']        
         processed_dir.mkdir(parents=True, exist_ok=True)
@@ -358,6 +362,10 @@ def main(config_path: str = 'config.json'):
             freq=config['cleaning']['frequency'],
             interp_limit=config['cleaning']['interpolation_limit']
         )
+
+        # Plot QC flags for each meter
+        for meter_name, meter_df in clean_data.groupby('Meter'):
+            plot_meter_qc(meter_df, meter_name, output_dir=plots_dir)
 
         print(f"✓ Loaded cleaned data with {len(clean_data)} rows and {len(clean_data['Meter'].unique())} meters")
         clean_data.to_csv(cleaned_file, index=False)

@@ -26,9 +26,6 @@
     "figsize": [14, 6],
     "dpi": 300
   },
-  "parallel": {
-    "n_workers": 15
-  },
   "bwf": {
     "k": 2.2,
     "sigma_method": "robust",

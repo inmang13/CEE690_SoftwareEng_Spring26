@@ -3,11 +3,13 @@ Module for loading Durham flow meter data from CSV files
 """
 
 import glob
+import json
 import os
 import sys
 from pathlib import Path
+
 import pandas as pd
-import json
+
 
 def read_flow_meter_data(file_path):
     """

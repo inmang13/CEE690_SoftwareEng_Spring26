@@ -1,12 +1,15 @@
 # src/rdii/remove_GWI.py
 """Module for calculating and removing Base Wastewater Infiltration (GWI) from flow data."""
 
-import sys
-import pandas as pd
-import numpy as np
-from pathlib import Path
 import json
+import sys
+from pathlib import Path
+
+import numpy as np
+import pandas as pd
+
 from rdii.plots import plot_GWI_estimate
+
 
 def process_all_meters_GWI(
     df,

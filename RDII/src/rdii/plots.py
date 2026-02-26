@@ -1,15 +1,13 @@
 # src/rdii/plots.py
 """Module for creating visualizations of flow data and QC flags."""
 
-import sys
-import matplotlib.pyplot as plt
-import matplotlib.pyplot as plt
-import matplotlib.ticker as mticker
 import json
-from pathlib import Path
-import pandas as pd
+import sys
 from pathlib import Path
 
+import matplotlib.pyplot as plt
+import matplotlib.ticker as mticker
+import pandas as pd
 
 
 def plot_meter_qc(df,meter_name,output_dir='results/plots',figsize=(14, 6),dpi=300):

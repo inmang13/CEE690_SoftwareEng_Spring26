@@ -1,16 +1,17 @@
 # src/rdii/data_cleaner.py
 """Module for cleaning sewer flow timeseries data."""
 
-import sys
-import pandas as pd
-import numpy as np
-from concurrent.futures import ProcessPoolExecutor
-import os
-from pathlib import Path
-from rdii.data_loader import read_all_flow_meters
-from rdii.plots import plot_meter_qc
 import json
+import os
+import sys
 import time
+from concurrent.futures import ProcessPoolExecutor
+from pathlib import Path
+
+import numpy as np
+import pandas as pd
+
+from rdii.data_loader import read_all_flow_meters
 from rdii.plots import plot_meter_qc
 
 

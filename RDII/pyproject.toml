@@ -20,6 +20,14 @@ dependencies = [
     "joblib>=1.2.0",
 ]
 
+[project.optional-dependencies]
+dev = [
+    "black",
+    "isort",
+    "pytest>=7.0.0",
+    "sphinx",
+    "sphinx-rtd-theme",
+]
 
 [tool.setuptools.packages.find]
 where = ["src"]

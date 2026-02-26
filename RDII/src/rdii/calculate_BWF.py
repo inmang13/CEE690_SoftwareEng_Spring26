@@ -7,7 +7,9 @@ from scipy import stats
 from scipy.stats import pearsonr
 import warnings
 import sys
+import os
 import json
+from joblib import Parallel, delayed
 from pathlib import Path
 warnings.filterwarnings('ignore')
 from rdii.plots import plot_final_classification, plot_iteration_statistics,plot_average_diurnal_pattern_all
@@ -241,6 +243,36 @@ def remove_isolated_points(labels, window_size=12):
             cleaned[i] = False
     return cleaned
 
+
+def process_meter(meter_name, group, config, processed_dir):
+    print(f"\nProcessing {meter_name} meter...")
+    
+    result = detect_wet_dry_periods(group,
+        k=config['bwf']['k'],
+        sigma_method=config['bwf']['sigma_method'],
+        max_iterations=config['bwf']['max_iterations'],
+        threshold=config['bwf']['threshold']
+    )
+
+    final_forecast = result['forecast']
+    group['DateTime'] = pd.to_datetime(group['DateTime'])
+    final_forecast['ds'] = pd.to_datetime(final_forecast['ds'])
+
+    group_aligned = group[group['DateTime'].isin(final_forecast['ds'].values)].reset_index(drop=True)
+    final_forecast = final_forecast.reset_index(drop=True)
+
+    result_df = pd.DataFrame({
+        'DateTime':               group_aligned['DateTime'].values,
+        'Raw':                    group_aligned['Flow_MGD'].values,
+        'GWI':                    group_aligned['GWI_estimate'].values,
+        'Flow_MGD_GWI_Corrected': group_aligned['Flow_MGD_GWI_Corrected'].values,
+        'BWF_Anomaly':            result['anomaly_labels'],
+        'BWF':                    final_forecast['yhat'].values,
+        'Meter':                  meter_name
+    })
+    return result_df
+
+
 def load_config(config_path ):
         """Load configuration from JSON file."""
         with open(config_path, 'r') as f:
@@ -280,41 +312,17 @@ def main(config_path: str = 'config.json'):
             print(f"✗ Failed to load cleaned data: {e}")
             sys.exit(1)
 
- 
-        results = []
-        for meter_name, group in data.groupby('Meter'):
+        # Detect available cores
+        n_cores = int(os.environ.get('SLURM_NTASKS', os.cpu_count()))
+        n_jobs = min(15, n_cores)
+        print(f"Running with {n_jobs} parallel workers")
 
-            print(f"\nProcessing {meter_name} meter...")
-            result = detect_wet_dry_periods(group, 
-                k=config['bwf']['k'], 
-                sigma_method=config['bwf']['sigma_method'], 
-                max_iterations=config['bwf']['max_iterations'], 
-                threshold=config['bwf']['threshold']
-            )
+        meter_groups = list(data.groupby('Meter'))
 
-            final_forecast= result['forecast']
-
-            group['DateTime'] = pd.to_datetime(group['DateTime'])
-            final_forecast['ds'] = pd.to_datetime(final_forecast['ds'])
-
-            group_aligned = group[group['DateTime'].isin(final_forecast['ds'].values)].reset_index(drop=True)
-            final_forecast = final_forecast.reset_index(drop=True)
-            
-            #plot_final_classification(result, meter_name, output_dir=plots_dir)
-            #plot_iteration_statistics(result,meter_name, output_dir=plots_dir)
-            #plot_average_diurnal_pattern_all(result,meter_name, output_dir=plots_dir)
-
-
-            result_df = pd.DataFrame({
-                'DateTime':                  group_aligned['DateTime'].values,
-                'Raw':                       group_aligned['Flow_MGD'].values,
-                'GWI':                       group_aligned['GWI_estimate'].values,
-                'Flow_MGD_GWI_Corrected':    group_aligned['Flow_MGD_GWI_Corrected'].values,
-                'BWF_Anomaly':               result['anomaly_labels'],
-                'BWF':                       final_forecast['yhat'].values,
-            })
-            result_df['Meter'] = meter_name
-            results.append(result_df)
+        results = Parallel(n_jobs=n_jobs, backend='loky')(
+            delayed(process_meter)(name, grp, config, processed_dir)
+            for name, grp in meter_groups
+        )
 
         final_results = pd.concat(results, ignore_index=True)
         final_results.to_csv(processed_dir / config['paths']['bwf_results_filename'], index=False)

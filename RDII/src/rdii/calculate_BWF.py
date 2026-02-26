@@ -189,6 +189,7 @@ def detect_wet_dry_periods(df, k=2.5,sigma_method='robust', max_iterations=50, t
         'iteration_history': iteration_history, #List of dictionaries containing info about each iteration (forecast, residual stats, anomaly counts, etc.) 
         'final_bounds': (final_lower, final_upper),  #Tuple containing the final lower and upper bounds used for anomaly classification in the last iteration
         'k': k  #The k value used for the final anomaly classification
+
     }
 
 
@@ -282,6 +283,7 @@ def main(config_path: str = 'config.json'):
  
         results = []
         for meter_name, group in data.groupby('Meter'):
+
             print(f"\nProcessing {meter_name} meter...")
             result = detect_wet_dry_periods(group, 
                 k=config['bwf']['k'], 
@@ -289,16 +291,27 @@ def main(config_path: str = 'config.json'):
                 max_iterations=config['bwf']['max_iterations'], 
                 threshold=config['bwf']['threshold']
             )
+
+            final_forecast= result['forecast']
+
+            group['DateTime'] = pd.to_datetime(group['DateTime'])
+            final_forecast['ds'] = pd.to_datetime(final_forecast['ds'])
+
+            group_aligned = group[group['DateTime'].isin(final_forecast['ds'].values)].reset_index(drop=True)
+            final_forecast = final_forecast.reset_index(drop=True)
             
-            plot_final_classification(result, meter_name, output_dir=plots_dir)
-            plot_iteration_statistics(result,meter_name, output_dir=plots_dir)
-            plot_average_diurnal_pattern_all(result,meter_name, output_dir=plots_dir)
+            #plot_final_classification(result, meter_name, output_dir=plots_dir)
+            #plot_iteration_statistics(result,meter_name, output_dir=plots_dir)
+            #plot_average_diurnal_pattern_all(result,meter_name, output_dir=plots_dir)
+
 
             result_df = pd.DataFrame({
-                'DateTime': result['original_data']['ds'],
-                'Flow_MGD_GWI_Corrected': result['original_data']['y'],
-                'BWF_Anomaly': result['anomaly_labels'],
-                'BWF_Residual_Flow': result['residual_flow']
+                'DateTime':                  group_aligned['DateTime'].values,
+                'Raw':                       group_aligned['Flow_MGD'].values,
+                'GWI':                       group_aligned['GWI_estimate'].values,
+                'Flow_MGD_GWI_Corrected':    group_aligned['Flow_MGD_GWI_Corrected'].values,
+                'BWF_Anomaly':               result['anomaly_labels'],
+                'BWF':                       final_forecast['yhat'].values,
             })
             result_df['Meter'] = meter_name
             results.append(result_df)

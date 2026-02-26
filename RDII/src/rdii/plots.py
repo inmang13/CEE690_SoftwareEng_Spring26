@@ -315,3 +315,33 @@ def plot_average_diurnal_pattern_all(results,meter_name,output_dir='results/plot
     output_file = output_path / f'{meter_name}_average_diurnal_pattern.png'
     plt.savefig(output_file, dpi=dpi, bbox_inches='tight')
     plt.close()
+
+def plot_average_diurnal_pattern_all(df, output_dir='results/plots', figsize=(14, 6), dpi=300):
+    """
+    Plot the average diurnal forecast pattern for multiple meters.
+    
+    """
+
+    output_path = Path(output_dir)
+    output_path.mkdir(parents=True, exist_ok=True)
+
+    df = df.copy()
+    df['hour'] = pd.to_datetime(df['DateTime']).dt.hour
+
+    plt.figure(figsize=figsize)
+
+    for meter_name, group in df.groupby('Meter'):
+        avg_forecast = group.groupby('hour')['BWF_Residual_Flow'].mean()
+        plt.plot(avg_forecast.index, avg_forecast.values, 'o-', linewidth=2, label=meter_name)
+
+    plt.xticks(range(0, 24))
+    plt.xlabel('Hour of Day')
+    plt.ylabel('Flow (MGD)')
+    plt.title('Average Diurnal Forecast Pattern — All Meters')
+    plt.grid(alpha=0.3)
+    plt.legend()
+
+    output_file = output_path / 'all_meters_average_diurnal_forecast.png'
+    plt.savefig(output_file, dpi=dpi, bbox_inches='tight')
+    plt.close()
+    print(f"Saved to {output_file}")

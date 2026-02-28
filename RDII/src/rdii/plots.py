@@ -1,8 +1,6 @@
 # src/rdii/plots.py
-"""Module for creating visualizations of flow data and QC flags."""
+"""Module for creating visualizations"""
 
-import json
-import sys
 from pathlib import Path
 
 import matplotlib.pyplot as plt
@@ -265,7 +263,7 @@ def plot_iteration_statistics(results,meter_name,output_dir='results/plots', fig
     plt.close()
 
 
-def plot_average_diurnal_pattern_all(results,meter_name,output_dir='results/plots', figsize=(14, 6), dpi=300):
+def plot_average_diurnal_pattern_single(results,meter_name,output_dir='results/plots', figsize=(14, 6), dpi=300):
     """
     Plot the average diurnal pattern for:
     - Forecasted baseline

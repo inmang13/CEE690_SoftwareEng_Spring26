@@ -1,20 +1,12 @@
 # src/rdii/process_rain.py
-"""Module for cleaning sewer flow timeseries data."""
-
-import json
+"""Module for processing rainfall data into multiple time resolutions.""" 
 import os
 import sys
-import time
 from pathlib import Path
 
-import numpy as np
 import pandas as pd
 
-
-def load_config(config_path):
-    """Load configuration from JSON file."""
-    with open(config_path, "r") as f:
-        return json.load(f)
+from rdii.utils import load_config
 
 
 def main(config_path: str = "config.json"):
@@ -25,9 +17,7 @@ def main(config_path: str = "config.json"):
     except FileNotFoundError:
         print(f"✗ Config file not found: {config_path}")
         sys.exit(1)
-    except json.JSONDecodeError as e:
-        print(f"✗ Invalid JSON in config file: {e}")
-        sys.exit(1)
+
 
     # Setup paths
     project_root = (
@@ -36,7 +26,6 @@ def main(config_path: str = "config.json"):
         else Path(__file__).parent.parent.parent
     )
 
-    raw_data_dir = project_root / config["paths"]["raw_data"]
     plots_dir = project_root / config["paths"]["plots_dir"]
 
     processed_dir = project_root / config["paths"]["processed_data"]

@@ -1,7 +1,6 @@
 # src/rdii/remove_GWI.py
 """Module for calculating and removing Base Wastewater Infiltration (GWI) from flow data."""
 
-import json
 import sys
 from pathlib import Path
 
@@ -9,6 +8,7 @@ import numpy as np
 import pandas as pd
 
 from rdii.plots import plot_GWI_estimate
+from rdii.utils import load_config
 
 
 def process_all_meters_GWI(
@@ -19,7 +19,7 @@ def process_all_meters_GWI(
     night_end=7,
 ):
     """
-    Apply GWI calculation and removal to all meters in parallel.
+    Apply GWI calculation and removal to all meters.
     """
 
     if len(df) == 0:
@@ -119,10 +119,6 @@ def remove_GWI(df, gwi_estimate):
     
     return df_corrected.reset_index()
 
-def load_config(config_path ):
-        """Load configuration from JSON file."""
-        with open(config_path, 'r') as f:
-            return json.load(f)
         
 
 def main(config_path: str = 'config.json'):
@@ -133,19 +129,14 @@ def main(config_path: str = 'config.json'):
         except FileNotFoundError:
             print(f"✗ Config file not found: {config_path}")
             sys.exit(1)
-        except json.JSONDecodeError as e:
-            print(f"✗ Invalid JSON in config file: {e}")
-            sys.exit(1)
+
         
         # Setup paths
         project_root = Path(config['project_root']) if 'project_root' in config else Path(__file__).parent.parent.parent
-        raw_data_dir = project_root / config['paths']['raw_data']
         processed_dir = project_root / config['paths']['processed_data']
         plots_dir= project_root / config['paths']['plots_dir']
-        combined_file = processed_dir / config['paths']['combined_filename']  
         processed_dir.mkdir(parents=True, exist_ok=True)
 
-        combined_file = processed_dir / config['paths']['combined_filename']
         cleaned_file = processed_dir / config['paths']['cleaned_filename']
         gwi_corrected_file = processed_dir / config['paths']['gwi_removed_filename']
 

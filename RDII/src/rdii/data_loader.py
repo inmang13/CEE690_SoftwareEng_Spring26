@@ -3,12 +3,13 @@ Module for loading Durham flow meter data from CSV files
 """
 
 import glob
-import json
 import os
 import sys
 from pathlib import Path
 
 import pandas as pd
+
+from rdii.utils import load_config
 
 
 def read_flow_meter_data(file_path):
@@ -125,10 +126,6 @@ def extract_meter_name(filename):
             f"'DURHAM_METER_...'")
     return parts[1]
 
-def load_config(config_path ):
-        """Load configuration from JSON file."""
-        with open(config_path, 'r') as f:
-            return json.load(f)
 
 def main(config_path: str = 'config.json'):
         
@@ -138,15 +135,11 @@ def main(config_path: str = 'config.json'):
         except FileNotFoundError:
             print(f"✗ Config file not found: {config_path}")
             sys.exit(1)
-        except json.JSONDecodeError as e:
-            print(f"✗ Invalid JSON in config file: {e}")
-            sys.exit(1)
-        
+
         # Setup paths
         project_root = Path(config['project_root']) if 'project_root' in config else Path(__file__).parent.parent.parent
         raw_data_dir = project_root / config['paths']['raw_data']
         processed_dir = project_root / config['paths']['processed_data']
-        combined_file = processed_dir / config['paths']['combined_filename']        
         processed_dir.mkdir(parents=True, exist_ok=True)
 
         combined_file = processed_dir / config['paths']['combined_filename']

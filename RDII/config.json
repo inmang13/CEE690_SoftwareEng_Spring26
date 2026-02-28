@@ -31,5 +31,8 @@
     "sigma_method": "robust",
     "max_iterations": 10,
     "threshold": 0.05
+  },
+  "parallel": {
+    "n_workers": 15
   }
 }

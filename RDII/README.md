@@ -3,7 +3,6 @@
 Software Engineering for Data Science class project analyzing rainfall-derived infiltration and inflow (RDII) in Durham's sewer system. The pipeline processes 15-minute resolution flow meter data from 15 meters across Durham, separating base wastewater flow (BWF) from infiltration and inflow contributions using iterative anomaly detection.
 
 ## Project Structure
-
 ```
 RDII/
 ├── config.json                  # Pipeline configuration
@@ -15,6 +14,12 @@ RDII/
 │   ├── raw/
 │   │   └── Durham/              # Raw 15-min flow meter CSVs (15 meters)
 │   └── processed/               # Intermediate and final outputs
+├── docs/
+│   ├── Makefile
+│   └── source/
+│       ├── conf.py              # Sphinx configuration
+│       ├── index.rst            # Documentation homepage
+│       └── modules.rst          # API reference
 ├── src/
 │   └── rdii/
 │       ├── __init__.py
@@ -184,6 +189,16 @@ pytest tests/
 Core: `pandas`, `numpy`, `scipy`, `prophet`, `holidays`, `joblib`, `matplotlib`
 
 See `pyproject.toml` for full dependency list with version constraints.
+
+## Documentation
+
+Full API documentation is generated with Sphinx.
+
+To build locally:
+```bash
+make docs
+```
+Then open `docs/build/html/index.html` in your browser.
 
 ## Author
 

@@ -1,5 +1,4 @@
 # MAIN ALGORITHM OUTLINE
-import json
 import os
 import sys
 import warnings
@@ -13,12 +12,91 @@ from prophet import Prophet
 from scipy import stats
 from scipy.stats import pearsonr
 
-warnings.filterwarnings("ignore")
 from rdii.plots import (
-    plot_average_diurnal_pattern_all,
+    plot_average_diurnal_pattern_single,
     plot_final_classification,
     plot_iteration_statistics,
 )
+from rdii.utils import detect_n_workers, load_config
+
+warnings.filterwarnings("ignore")
+
+
+class BWFConfig:
+    """
+    Configuration for the BWF detection algorithm.
+
+    Parameters
+    ----------
+    config_dict : dict
+        Raw configuration dictionary loaded from config.json.
+
+    Examples
+    --------
+    >>> cfg = BWFConfig(config)
+    >>> detect_wet_dry_periods(df, k=cfg.k, sigma_method=cfg.sigma_method)
+    """
+
+    def __init__(self, config_dict):
+        self.k              = config_dict['bwf']['k']
+        self.sigma_method   = config_dict['bwf']['sigma_method']
+        self.max_iterations = config_dict['bwf']['max_iterations']
+        self.threshold      = config_dict['bwf']['threshold']
+        self.n_workers      = config_dict['parallel']['n_workers']
+
+
+class MeterResult:
+    """
+    Stores and formats BWF detection results for a single meter.
+
+    Parameters
+    ----------
+    meter_name : str
+        Name of the meter.
+    group : pd.DataFrame
+        Raw input data for this meter.
+    result : dict
+        Output dictionary from detect_wet_dry_periods().
+
+    Examples
+    --------
+    >>> meter_result = MeterResult('CBO', group, result)
+    >>> df = meter_result.to_dataframe()
+    """
+
+    def __init__(self, meter_name, group, result):
+        self.meter_name = meter_name
+        final_forecast = result['forecast']
+        group['DateTime'] = pd.to_datetime(group['DateTime'])
+        final_forecast['ds'] = pd.to_datetime(final_forecast['ds'])
+
+        group_aligned = group[
+            group['DateTime'].isin(final_forecast['ds'].values)
+        ].reset_index(drop=True)
+        final_forecast = final_forecast.reset_index(drop=True)
+
+        self._df = pd.DataFrame({
+            'DateTime':               group_aligned['DateTime'].values,
+            'Raw':                    group_aligned['Flow_MGD'].values,
+            'GWI':                    group_aligned['GWI_estimate'].values,
+            'Flow_MGD_GWI_Corrected': group_aligned['Flow_MGD_GWI_Corrected'].values,
+            'BWF_Anomaly':            result['anomaly_labels'],
+            'BWF':                    final_forecast['yhat'].values,
+            'Meter':                  meter_name
+        })
+
+    def to_dataframe(self):
+        """
+        Return results as a DataFrame.
+
+        Returns
+        -------
+        pd.DataFrame
+            Results with columns: DateTime, Raw, GWI, Flow_MGD_GWI_Corrected,
+            BWF_Anomaly, BWF, Meter.
+        """
+        return self._df
+
 
 
 def detect_wet_dry_periods(
@@ -90,7 +168,7 @@ def detect_wet_dry_periods(
             changepoint_prior_scale=0.05,
             yearly_seasonality=6,
             weekly_seasonality=True,
-            daily_seasonality=True,
+            daily_seasonality=daily_seasonality,
             holidays=holiday_df,
         )
 
@@ -271,44 +349,21 @@ def remove_isolated_points(labels, window_size=12):
     return cleaned
 
 
-def process_meter(meter_name, group, config, processed_dir):
+def process_meter(meter_name, group, cfg, plots_dir):
     print(f"\nProcessing {meter_name} meter...")
-
     result = detect_wet_dry_periods(
         group,
-        k=config["bwf"]["k"],
-        sigma_method=config["bwf"]["sigma_method"],
-        max_iterations=config["bwf"]["max_iterations"],
-        threshold=config["bwf"]["threshold"],
+        k=cfg.k,
+        sigma_method=cfg.sigma_method,
+        max_iterations=cfg.max_iterations,
+        threshold=cfg.threshold
     )
-
-    final_forecast = result["forecast"]
-    group["DateTime"] = pd.to_datetime(group["DateTime"])
-    final_forecast["ds"] = pd.to_datetime(final_forecast["ds"])
-
-    group_aligned = group[
-        group["DateTime"].isin(final_forecast["ds"].values)
-    ].reset_index(drop=True)
-    final_forecast = final_forecast.reset_index(drop=True)
-
-    result_df = pd.DataFrame(
-        {
-            "DateTime": group_aligned["DateTime"].values,
-            "Raw": group_aligned["Flow_MGD"].values,
-            "GWI": group_aligned["GWI_estimate"].values,
-            "Flow_MGD_GWI_Corrected": group_aligned["Flow_MGD_GWI_Corrected"].values,
-            "BWF_Anomaly": result["anomaly_labels"],
-            "BWF": final_forecast["yhat"].values,
-            "Meter": meter_name,
-        }
-    )
-    return result_df
-
-
-def load_config(config_path):
-    """Load configuration from JSON file."""
-    with open(config_path, "r") as f:
-        return json.load(f)
+    
+    plot_final_classification(result, meter_name, output_dir=plots_dir)
+    plot_iteration_statistics(result, meter_name, output_dir=plots_dir)
+    plot_average_diurnal_pattern_single(result, meter_name, output_dir=plots_dir)
+   
+    return MeterResult(meter_name, group, result).to_dataframe()
 
 
 def main(config_path: str = "config.json"):
@@ -319,9 +374,7 @@ def main(config_path: str = "config.json"):
     except FileNotFoundError:
         print(f"✗ Config file not found: {config_path}")
         sys.exit(1)
-    except json.JSONDecodeError as e:
-        print(f"✗ Invalid JSON in config file: {e}")
-        sys.exit(1)
+
 
     # Setup paths
     project_root = (
@@ -329,15 +382,13 @@ def main(config_path: str = "config.json"):
         if "project_root" in config
         else Path(__file__).parent.parent.parent
     )
-    raw_data_dir = project_root / config["paths"]["raw_data"]
+
     processed_dir = project_root / config["paths"]["processed_data"]
     plots_dir = project_root / config["paths"]["plots_dir"]
-    combined_file = processed_dir / config["paths"]["combined_filename"]
     processed_dir.mkdir(parents=True, exist_ok=True)
 
-    combined_file = processed_dir / config["paths"]["combined_filename"]
-    cleaned_file = processed_dir / config["paths"]["cleaned_filename"]
     gwi_removed_file = processed_dir / config["paths"]["gwi_removed_filename"]
+
 
     # Load cleaned data
     try:
@@ -347,30 +398,24 @@ def main(config_path: str = "config.json"):
         print(f"✗ Failed to load cleaned data: {e}")
         sys.exit(1)
 
-    # Detect available cores
-    if os.environ.get("SLURM_NTASKS"):
-        # on the cluster, use full parallelism
-        n_jobs = min(15, int(os.environ["SLURM_NTASKS"]))
-    else:
-        # on laptop, be conservative with memory
-        n_jobs = 2
-
+    # Setup config and parallelism
+    cfg = BWFConfig(config)
+    n_jobs = detect_n_workers(cfg.n_workers)
     print(f"Running with {n_jobs} parallel workers")
 
+    # Run BWF detection in parallel across meters
     meter_groups = list(data.groupby("Meter"))
-
     results = Parallel(n_jobs=n_jobs, backend="loky")(
-        delayed(process_meter)(name, grp, config, processed_dir)
+        delayed(process_meter)(name, grp, cfg, plots_dir)
         for name, grp in meter_groups
     )
+    
 
+    # Save results
     final_results = pd.concat(results, ignore_index=True)
-    final_results.to_csv(
-        processed_dir / config["paths"]["bwf_results_filename"], index=False
-    )
-    print(
-        f"✓ Saved BWF results to: {processed_dir / config['paths']['bwf_results_filename']}"
-    )
+    out_file = processed_dir / config["paths"]["bwf_results_filename"]
+    final_results.to_csv(out_file, index=False)
+    print(f"✓ Saved BWF results to: {out_file}")
 
 
 if __name__ == "__main__":

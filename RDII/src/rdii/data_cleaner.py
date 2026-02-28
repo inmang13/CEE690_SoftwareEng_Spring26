@@ -1,28 +1,18 @@
 # src/rdii/data_cleaner.py
 """Module for cleaning sewer flow timeseries data."""
 
-import json
 import os
 import sys
-import time
-from concurrent.futures import ProcessPoolExecutor
 from pathlib import Path
 
 import numpy as np
 import pandas as pd
+from joblib import Parallel, delayed
 
 from rdii.data_loader import read_all_flow_meters
 from rdii.plots import plot_meter_qc
+from rdii.utils import detect_n_workers, load_config
 
-
-def _clean_meter_wrapper(args):
-    group, flow_col, freq, interp_limit = args
-    return _clean_single_meter(
-        group,
-        flow_col=flow_col,
-        freq=freq,
-        interp_limit=interp_limit
-    )
 
 def clean_sewer_timeseries(
     df,
@@ -46,16 +36,11 @@ def clean_sewer_timeseries(
     if n_workers is None:
         n_workers = os.cpu_count()
 
-    # Split by meter
-    groups = [
-        (group, flow_col, freq, interp_limit)
-        for _, group in df.groupby('Meter')
-    ]
-
     # Run meters in parallel
-    with ProcessPoolExecutor(max_workers=n_workers) as executor:
-        cleaned_all = list(executor.map(_clean_meter_wrapper, groups))
-
+    cleaned_all = Parallel(n_jobs=n_workers, backend='loky')(
+        delayed(_clean_single_meter)(group, flow_col, freq, interp_limit)
+        for _, group in df.groupby('Meter')
+    )
     return pd.concat(cleaned_all, ignore_index=True)
 
 
@@ -153,7 +138,6 @@ def remove_negative_flows(df,flow_col,threshold,verbose=False):
     
     # Detect negative flows
     negative_mask = df[flow_col] < threshold
-    negative_count = negative_mask.sum()
     
     if negative_count > 0:
         df.loc[negative_mask, flow_col] = np.nan
@@ -171,7 +155,6 @@ def remove_flatlines(df, flow_col, window=48):
     
     # Detect flatlines (zero standard deviation)
     flatlines = df[flow_col].rolling(window).std() == 0
-    flat_count = flatlines.sum()
     
     df.loc[flatlines, flow_col] = np.nan
     
@@ -189,14 +172,6 @@ def interpolate_gaps(df, flow_col, interp_limit):
     # Track which values were NaN before interpolation
     was_nan = df[flow_col].isna()
     
-    # Find gap sizes (in terms of consecutive NaNs)
-    # Create groups of consecutive NaNs
-    nan_groups = (was_nan != was_nan.shift()).cumsum()
-    gap_sizes = was_nan.groupby(nan_groups).transform('sum')
-
-    # Only interpolate small gaps
-    should_interpolate = was_nan & (gap_sizes <= 4)
-
     # Find gap sizes (in terms of consecutive NaNs)
     # Create groups of consecutive NaNs
     nan_groups = (was_nan != was_nan.shift()).cumsum()
@@ -257,7 +232,6 @@ def remove_low_outliers(df, flow_col, window=14, threshold_multiplier=3,verbose=
     
     # Identify negative spikes (days with suspiciously low minimums)
     neg_spikes = deviation < threshold
-    outlier_count = neg_spikes.sum()
 
     # Mark those days' min_flow as NaN
     daily_min.loc[neg_spikes, 'min_flow'] = np.nan
@@ -324,10 +298,6 @@ def load_or_combine_data(raw_dir, combined_file, verbose = False):
         
         return flow_data
 
-def load_config(config_path ):
-        """Load configuration from JSON file."""
-        with open(config_path, 'r') as f:
-            return json.load(f)
 
 def main(config_path: str = 'config.json'):
         
@@ -337,31 +307,32 @@ def main(config_path: str = 'config.json'):
         except FileNotFoundError:
             print(f"✗ Config file not found: {config_path}")
             sys.exit(1)
-        except json.JSONDecodeError as e:
-            print(f"✗ Invalid JSON in config file: {e}")
-            sys.exit(1)
-        
+
         # Setup paths
         project_root = Path(config['project_root']) if 'project_root' in config else Path(__file__).parent.parent.parent
         raw_data_dir = project_root / config['paths']['raw_data']
         plots_dir= project_root / config['paths']['plots_dir']
 
         processed_dir = project_root / config['paths']['processed_data']
-        combined_file = processed_dir / config['paths']['combined_filename']        
         processed_dir.mkdir(parents=True, exist_ok=True)
 
         combined_file = processed_dir / config['paths']['combined_filename']
         cleaned_file = processed_dir / config['paths']['cleaned_filename']
 
+        n_workers_requested = config['parallel']['n_workers']
+        n_workers = detect_n_workers(n_workers_requested)
+        
         # Load data
         df = load_or_combine_data(raw_data_dir, combined_file)
         print(f"✓ Loaded data with {len(df)} rows and {len(df['Meter'].unique())} meters")
 
+    
         clean_data = clean_sewer_timeseries(
             df,
             flow_col=config['cleaning']['flow_column'],
             freq=config['cleaning']['frequency'],
-            interp_limit=config['cleaning']['interpolation_limit']
+            interp_limit=config['cleaning']['interpolation_limit'],
+            n_workers=n_workers
         )
 
         # Plot QC flags for each meter

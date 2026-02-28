@@ -1,3 +1,6 @@
+# Data
+/data/
+
 
 # Python
 __pycache__/
@@ -29,3 +32,11 @@ htmlcov/
 # OS
 .DS_Store
 Thumbs.db
+
+# Ignore results and temporary files
+results/
+*.log
+
+# Ignore virtual environments
+venv/
+ENV/

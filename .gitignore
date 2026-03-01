@@ -1,5 +1,6 @@
 # Data
-/data/
+data/
+RDII/data/processed/
 
 
 # Python
@@ -39,4 +40,4 @@ results/
 
 # Ignore virtual environments
 venv/
-ENV/
+ENV/c

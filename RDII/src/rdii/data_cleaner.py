@@ -50,6 +50,10 @@ def clean_sewer_timeseries_serial(
     freq='15min',
     interp_limit=4,
 ):
+    """
+    Clean sewer flow timeseries meter-by-meter without parallelization (for debugging).
+    """
+
     cleaned_all = []
     for _, group in df.groupby('Meter'):
         cleaned_all.append(
@@ -138,9 +142,6 @@ def remove_negative_flows(df,flow_col,threshold,verbose=False):
     
     # Detect negative flows
     negative_mask = df[flow_col] < threshold
-    
-    if negative_count > 0:
-        df.loc[negative_mask, flow_col] = np.nan
     
     return df, negative_mask
 
@@ -280,23 +281,26 @@ def add_qc_flags(df, flow_col,interpolated_mask, negative_mask, flatline_mask,ou
     return df
 
 def load_or_combine_data(raw_dir, combined_file, verbose = False):
-        """Load existing combined data or create from raw files."""
-        if combined_file.exists():
-            if verbose:
-                print(f"Found existing file: {combined_file.name}")
-                print("Loading from file...")
-            flow_data = pd.read_csv(combined_file, parse_dates=['DateTime'])
-            if verbose:
-                print(f"✓ Loaded {len(flow_data):,} records")
-        else:
-            if verbose:
-                print("Loading from raw CSV files...")
-            flow_data = read_all_flow_meters(str(raw_dir), verbose=verbose)
-            flow_data.to_csv(combined_file, index=False)
-            if verbose:
-                print(f"✓ Saved combined data to: {combined_file}")
-        
-        return flow_data
+    """
+    Load existing combined data or create from raw files.
+    """
+    
+    if combined_file.exists():
+        if verbose:
+            print(f"Found existing file: {combined_file.name}")
+            print("Loading from file...")
+        flow_data = pd.read_csv(combined_file, parse_dates=['DateTime'])
+        if verbose:
+            print(f"✓ Loaded {len(flow_data):,} records")
+    else:
+        if verbose:
+            print("Loading from raw CSV files...")
+        flow_data = read_all_flow_meters(str(raw_dir), verbose=verbose)
+        flow_data.to_csv(combined_file, index=False)
+        if verbose:
+            print(f"✓ Saved combined data to: {combined_file}")
+    
+    return flow_data
 
 
 def main(config_path: str = 'config.json'):

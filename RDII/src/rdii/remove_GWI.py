@@ -11,13 +11,7 @@ from rdii.plots import plot_GWI_estimate
 from rdii.utils import load_config
 
 
-def process_all_meters_GWI(
-    df,
-    fraction_min=0.85,
-    rolling_window=30,
-    night_start=1,
-    night_end=7,
-):
+def process_all_meters_GWI(df,fraction_min=0.85, rolling_window=30 ):
     """
     Apply GWI calculation and removal to all meters.
     """
@@ -34,9 +28,7 @@ def process_all_meters_GWI(
         GWI_estimate = calculate_GWI_minflow(
             group,
             fraction_min=fraction_min,
-            rolling_window=rolling_window,
-            night_start=night_start,
-            night_end=night_end
+            rolling_window=rolling_window
         )
 
         corrected_df = remove_GWI(group, gwi_estimate=GWI_estimate) 
@@ -45,10 +37,9 @@ def process_all_meters_GWI(
     return pd.concat(results, ignore_index=True)
 
 
-def calculate_GWI_minflow(df, fraction_min=0.85, rolling_window=30, night_start=1, night_end=7):
+def calculate_GWI_minflow(df, fraction_min=0.85, rolling_window=30):
     """
-    Calculate Base Wastewater Infiltration (GWI) minimum flow using nighttime flows.
-
+    Calculate Base Wastewater Infiltration (GWI) minimum flow.
     """
     
     df_night = df.copy()
@@ -61,10 +52,9 @@ def calculate_GWI_minflow(df, fraction_min=0.85, rolling_window=30, night_start=
     df_night['hour'] = df_night.index.hour
     
     # Filter to nighttime hours (typical minimum-use period)
-    night_window = df_night[(df_night['hour'] >= night_start) & (df_night['hour'] <= night_end)]
     
     # Calculate daily minimum nighttime flow
-    mnf_daily = night_window['Flow_MGD'].resample('D').min()
+    mnf_daily = df_night['Flow_MGD'].resample('D').min()
     
     # Remove outliers using Tukey method (IQR-based)
     Q1 = mnf_daily.quantile(0.25)
@@ -154,9 +144,7 @@ def main(config_path: str = 'config.json'):
             cleaned_gwi = process_all_meters_GWI(
                 cleaned_data,
                 fraction_min=config['gwi']['fraction_min'],
-                rolling_window=config['gwi']['rolling_window'],
-                night_start=config['gwi']['night_start'],
-                night_end=config['gwi']['night_end']
+                rolling_window=config['gwi']['rolling_window']
                                         )
 
             for meter_name, meter_df in cleaned_gwi.groupby('Meter'):

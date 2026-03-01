@@ -300,7 +300,6 @@ def detect_wet_dry_periods(
 def check_termination(residuals, current_forecast, previous_forecast, threshold):
     """
     Check if any termination condition is met
-
     """
 
     # Condition 1: Normality test (Anderson-Darling)
@@ -332,6 +331,9 @@ def check_termination(residuals, current_forecast, previous_forecast, threshold)
 
 
 def remove_isolated_points(labels, window_size=12):
+    """
+    Remove isolated anomalous points that are surrounded by normal points.
+    """
     n = len(labels)
     cleaned = np.empty(n, dtype=bool)
     half = window_size // 2
@@ -350,6 +352,10 @@ def remove_isolated_points(labels, window_size=12):
 
 
 def process_meter(meter_name, group, cfg, plots_dir):
+    """
+    Process a single meter's data through the BWF detection algorithm and generate plots.
+    """
+    
     print(f"\nProcessing {meter_name} meter...")
     result = detect_wet_dry_periods(
         group,

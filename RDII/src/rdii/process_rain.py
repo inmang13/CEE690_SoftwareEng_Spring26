@@ -1,11 +1,13 @@
 # src/rdii/process_rain.py
 """Module for processing rainfall data into multiple time resolutions.""" 
+
 import os
 import sys
 from pathlib import Path
 
 import pandas as pd
 
+from rdii.plots import plot_cumulative_rainfall
 from rdii.utils import load_config
 
 
@@ -27,10 +29,10 @@ def main(config_path: str = "config.json"):
     )
 
     plots_dir = project_root / config["paths"]["plots_dir"]
+    rain_plots_dir = plots_dir / 'rain'
 
     processed_dir = project_root / config["paths"]["processed_data"]
     combined_file = processed_dir / config["paths"]["combined_filename"]
-    rain_file = processed_dir / config["paths"]["rain_filename"]
     processed_dir.mkdir(parents=True, exist_ok=True)
 
     # Load data
@@ -52,6 +54,7 @@ def main(config_path: str = "config.json"):
 
     # Daily
     rain_daily = df.groupby("Meter").resample("D")["Rain_in"].sum().reset_index()
+    plot_cumulative_rainfall(rain_daily, output_dir=rain_plots_dir)
 
     rain_5min.to_csv(processed_dir / "rain_5min.csv", index=False)
     rain_hourly.to_csv(processed_dir / "rain_hourly.csv", index=False)

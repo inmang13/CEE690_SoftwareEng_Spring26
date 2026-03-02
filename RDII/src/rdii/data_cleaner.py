@@ -315,7 +315,7 @@ def main(config_path: str = 'config.json'):
         # Setup paths
         project_root = Path(config['project_root']) if 'project_root' in config else Path(__file__).parent.parent.parent
         raw_data_dir = project_root / config['paths']['raw_data']
-        plots_dir= project_root / config['paths']['plots_dir']
+        plots_dir= project_root / config['paths']['plots_dir'] / "cleaning_qc"
 
         processed_dir = project_root / config['paths']['processed_data']
         processed_dir.mkdir(parents=True, exist_ok=True)

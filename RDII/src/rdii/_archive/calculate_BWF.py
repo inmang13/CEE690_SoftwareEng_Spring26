@@ -15,7 +15,6 @@ from scipy.stats import pearsonr
 from rdii.plots import (
     plot_average_diurnal_pattern_single,
     plot_final_classification,
-    plot_final_classification_zoom,
     plot_iteration_statistics,
 )
 from rdii.utils import detect_n_workers, load_config
@@ -79,8 +78,8 @@ class MeterResult:
         self._df = pd.DataFrame({
             'DateTime':               group_aligned['DateTime'].values,
             'Raw':                    group_aligned['Flow_MGD'].values,
-            #'GWI':                    group_aligned['GWI_estimate'].values,
-            #'Flow_MGD_GWI_Corrected': group_aligned['Flow_MGD_GWI_Corrected'].values,
+            'GWI':                    group_aligned['GWI_estimate'].values,
+            'Flow_MGD_GWI_Corrected': group_aligned['Flow_MGD_GWI_Corrected'].values,
             'BWF_Anomaly':            result['anomaly_labels'],
             'BWF':                    final_forecast['yhat'].values,
             'Meter':                  meter_name
@@ -108,12 +107,12 @@ def detect_wet_dry_periods(
     """
 
     # 1. INITIALIZE
-    training_data = df[["DateTime", "Flow_MGD"]].copy()
+    training_data = df[["DateTime", "Flow_MGD_GWI_Corrected"]].copy()
 
     training_data["DateTime"] = pd.to_datetime(training_data["DateTime"])
 
     training_data.rename(
-        columns={"DateTime": "ds", "Flow_MGD": "y"}, inplace=True
+        columns={"DateTime": "ds", "Flow_MGD_GWI_Corrected": "y"}, inplace=True
     )
 
     training_data = training_data.dropna()
@@ -304,9 +303,9 @@ def check_termination(residuals, current_forecast, previous_forecast, threshold)
     """
 
     # Condition 1: Normality test (Anderson-Darling)
-    result = stats.anderson(residuals, dist='norm', method='interpolate')
+    result = stats.anderson(residuals, dist="norm")
     # If statistic < critical value, data is normal
-    if result.pvalue > 0.05:  # 5% significance
+    if result.statistic < result.critical_values[2]:  # 5% significance
         return True, "Residuals pass normality test"
 
     # Condition 2: Maximum residual threshold
@@ -367,7 +366,6 @@ def process_meter(meter_name, group, cfg, plots_dir):
     )
     
     plot_final_classification(result, meter_name, output_dir=plots_dir)
-    plot_final_classification_zoom(result, meter_name, output_dir=plots_dir)
     plot_iteration_statistics(result, meter_name, output_dir=plots_dir)
     plot_average_diurnal_pattern_single(result, meter_name, output_dir=plots_dir)
    
@@ -392,17 +390,16 @@ def main(config_path: str = "config.json"):
     )
 
     processed_dir = project_root / config["paths"]["processed_data"]
-    plots_dir = project_root / config["paths"]["plots_dir"] / "bwf_results"
+    plots_dir = project_root / config["paths"]["plots_dir"]
     processed_dir.mkdir(parents=True, exist_ok=True)
 
-    #gwi_removed_file = processed_dir / config["paths"]["gwi_removed_filename"]
-    cleaned_file = processed_dir / config["paths"]["cleaned_filename"]
+    gwi_removed_file = processed_dir / config["paths"]["gwi_removed_filename"]
 
 
     # Load cleaned data
     try:
-        data = pd.read_csv(cleaned_file)
-        print("Loading cleaned data ...")
+        data = pd.read_csv(gwi_removed_file)
+        print("Loading cleaned data with GWI removed...")
     except Exception as e:
         print(f"✗ Failed to load cleaned data: {e}")
         sys.exit(1)

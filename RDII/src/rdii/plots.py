@@ -182,6 +182,59 @@ def plot_final_classification(results, meter_name, output_dir='results/plots', f
     plt.close()
 
 
+def plot_final_classification_zoom(results, meter_name, output_dir='results/plots', figsize=(14, 6), dpi=300):
+    """
+    Plot the final anomaly classification with forecast and anomaly labels.
+    """
+
+    # Create output directory
+    output_path = Path(output_dir)
+    output_path.mkdir(parents=True, exist_ok=True)
+
+    fig, ax = plt.subplots(figsize=figsize)
+    
+    k=results['k']
+
+    original = results['original_data']
+    anomaly_labels = results['anomaly_labels']
+    final_forecast = results['forecast']
+    bounds = results['final_bounds']
+    
+    # Plot normal points
+    normal_mask = ~anomaly_labels
+    ax.plot(original['ds'][normal_mask], original['y'][normal_mask], 'o',
+            color='blue', alpha=0.5, markersize=3, label='Normal')
+    
+    # Plot anomalous points
+    anomaly_mask = anomaly_labels
+    ax.plot(original['ds'][anomaly_mask], original['y'][anomaly_mask], 'o',
+            color='red', alpha=0.5, markersize=3, label='Anomaly')
+    
+    # Plot final forecast
+    ax.plot(final_forecast['ds'], final_forecast['yhat'],
+            linewidth=2, color='darkblue', label='Forecast', zorder=5)
+    
+    # Plot confidence bounds
+    ax.fill_between(final_forecast['ds'],
+                    final_forecast['yhat'] + bounds[0],
+                    final_forecast['yhat'] + bounds[1],
+                    alpha=0.2, color='blue', label=f'{k}σ Bounds')
+    
+    ax.set_xlim(pd.Timestamp('2024-01-01'),
+            pd.Timestamp('2024-01-30'))
+    
+    ax.set_xlabel('Date', fontsize=12)
+    ax.set_ylabel('Flow (MGD)', fontsize=12)
+    ax.set_title('Final Anomaly Classification', fontsize=14, fontweight='bold')
+    ax.legend(loc='upper right', fontsize=10)
+    ax.grid(True, alpha=0.3)
+
+    # Save figure
+    output_file = output_path / f'{meter_name}_anomaly_detection_final_classification_zoom.png'
+    plt.savefig(output_file, dpi=dpi, bbox_inches='tight')
+    plt.close()
+
+
 
 def plot_iteration_statistics(results,meter_name,output_dir='results/plots', figsize=(14, 6), dpi=300):        
     """
@@ -315,7 +368,6 @@ def plot_average_diurnal_pattern_single(results,meter_name,output_dir='results/p
 def plot_average_diurnal_pattern_all(df, output_dir='results/plots', figsize=(14, 6), dpi=300):
     """
     Plot the average diurnal forecast pattern for multiple meters.
-    
     """
 
     output_path = Path(output_dir)
@@ -341,3 +393,34 @@ def plot_average_diurnal_pattern_all(df, output_dir='results/plots', figsize=(14
     plt.savefig(output_file, dpi=dpi, bbox_inches='tight')
     plt.close()
     print(f"Saved to {output_file}")
+
+
+def plot_cumulative_rainfall(rain_daily, output_dir='results/plots', figsize=(14, 6), dpi=300):
+    """
+    Plot cumulative daily rainfall for all meters on one figure.
+    """
+
+    output_path = Path(output_dir)
+    output_path.mkdir(parents=True, exist_ok=True)
+
+    fig, ax = plt.subplots(figsize=figsize)
+
+    for meter_name, group in rain_daily.groupby('Meter'):
+        group = group.sort_values('DateTime')
+        group['cumulative_rain'] = group['Rain_in'].cumsum()
+        ax.plot(group['DateTime'], group['cumulative_rain'], linewidth=1.5, label=meter_name)
+
+    ax.set_xlabel('Date', fontsize=12)
+    ax.set_ylabel('Cumulative Rainfall (in)', fontsize=12)
+    ax.set_title('Cumulative Daily Rainfall — All Meters', fontsize=14, fontweight='bold')
+    ax.legend(loc='upper left', fontsize=9, framealpha=0.9)
+    ax.grid(True, alpha=0.3)
+    plt.xticks(rotation=45)
+    plt.tight_layout()
+
+    output_file = output_path / 'cumulative_rainfall_all_meters.png'
+    plt.savefig(output_file, dpi=dpi, bbox_inches='tight')
+    plt.close()
+
+    print(f"✓ Saved cumulative rainfall plot to {output_file}")
+    return output_file

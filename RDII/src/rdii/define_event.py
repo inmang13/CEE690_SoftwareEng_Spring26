@@ -79,7 +79,7 @@ class EventConfig:
     # If True, events are not split at secondary peaks -- the event continues
     # growing as long as flow stays elevated. Almost always True for sewers
     # where a single storm can produce multiple flow peaks.
-    allow_multi_peak: bool 
+    #allow_multi_peak: bool 
    
     # --- Credibility screening ---
     
@@ -140,10 +140,14 @@ def define_events(
 
         end_idx, meta = grow_event(onset_idx, residual, flow, baseline, config)
 
+        # Walk back to capture the rising limb
+        adjusted_start = lookback_onset(onset_idx, residual, config, min_idx=claimed_up_to + 1)
+
+
         raw_events.append(build_event_record(
-            start_time=timestamps[onset_idx],
+            start_time=timestamps[adjusted_start],
             end_time=timestamps[end_idx],
-            start_idx=onset_idx,
+            start_idx=adjusted_start,
             end_idx=end_idx,
             flow=flow,
             baseline=baseline,
@@ -256,7 +260,27 @@ def check_termination(residual_window: np.ndarray, config: EventConfig) -> bool:
         return False
     return bool(np.all(residual_window[:config.termination_duration] < config.return_threshold))
 
+def lookback_onset(onset_idx: int, residual: np.ndarray, config: EventConfig, min_idx: int = 0) -> int:
+    """
+    Walk backward from a confirmed onset to find where the residual
+    first rose above return_threshold.
 
+    This captures the early rising limb that sustain_duration would otherwise miss.
+    Stops at min_idx to avoid overlapping the previous event.
+
+    Returns
+    -------
+    int
+        Adjusted start index (>= min_idx, <= onset_idx)
+    """
+    idx = onset_idx
+
+    while idx > min_idx:
+        if residual[idx - 1] < config.return_threshold:
+            break
+        idx -= 1
+
+    return idx
 
 
 def merge_close_events(
@@ -442,12 +466,43 @@ def main(config_path: str = 'config.json'):
     # Setup paths
     project_root = Path(config['project_root']) if 'project_root' in config else Path(__file__).parent.parent.parent
     processed_dir = project_root / config['paths']['processed_data']
-    cleaned_gwi = processed_dir / config['paths']['gwi_removed_filename']
+    bwf_file   = processed_dir / config['paths']['bwf_results_filename']
 
     # Load data
-    data = pd.read_csv(cleaned_gwi)
+    data = pd.read_csv(bwf_file      )
     print("Loading cleaned data ...")
 
+    cfg = EventConfig(
+        deviation_threshold  = config['event']['deviation_threshold'],
+        sustain_duration     = config['event']['sustain_duration'],
+        return_threshold     = config['event']['return_threshold'],
+        termination_duration = config['event']['termination_duration'],
+        min_inter_event_time = config['event']['min_inter_event_time'],
+        merge_gap_duration   = config['event']['merge_gap_duration'],
+        max_internal_gap     = config['event']['max_internal_gap'],
+        min_event_duration   = config['event']['min_event_duration'],
+        min_peak_excess      = config['event']['min_peak_excess'],
+    )
+
+    all_events = []
+
+    for meter_name, group in data.groupby('Meter'):
+        print(f"\nProcessing {meter_name}...")
+        group = group.set_index('DateTime').sort_index()
+
+        flow_series     = group['Raw']
+        baseline_series = group['BWF']
+
+        events, diagnostics = define_events(flow_series, baseline_series, cfg)
+
+        for ev in events:
+            ev['Meter'] = meter_name
+        all_events.extend(events)
+    
+    events_df = pd.DataFrame(all_events)
+    out_file  = processed_dir / config['paths']['events_filename']
+    events_df.to_csv(out_file, index=False)
+    print(f"\n✓ Saved {len(events_df)} events to {out_file}")
 
 
 

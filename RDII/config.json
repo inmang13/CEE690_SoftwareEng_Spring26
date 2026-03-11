@@ -7,6 +7,8 @@
     "cleaned_filename": "cleaned_flow_data.csv",
     "bwf_results_filename":"bwf_results.csv",
     "gwi_removed_filename": "cleaned_gwi.csv",
+    "events_filename": "flow_events.csv",
+    "event_stats_filename": "event_stats.csv",
     "plots_dir": "results/plots"
   },
   "cleaning": {
@@ -30,10 +32,15 @@
     "threshold": 0.05
   },
   "event": {
-    "k": 3.5,
-    "sigma_method": "robust",
-    "max_iterations": 10,
-    "threshold": 0.05
+    "deviation_threshold": 2,
+    "sustain_duration": 3,
+    "return_threshold": 0.3,
+    "termination_duration": 3,
+    "min_inter_event_time": 6,
+    "merge_gap_duration": 3,
+    "max_internal_gap": 3,
+    "min_event_duration": 3,
+    "min_peak_excess": 0.1
   },
   "parallel": {
     "n_workers": 15
